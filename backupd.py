@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import pickle
 import platform
 from uuid import uuid1
 from httplib import HTTPSConnection
@@ -34,6 +35,8 @@ class Api():
 
 
 class App():
+    SETTINGS_PATH = '/var/lib/bitcalm/data'
+    
     def __init__(self):
         self.stdin_path = '/dev/null'
         self.stdout_path = '/dev/null'
@@ -41,33 +44,37 @@ class App():
         self.pidfile_path =  '/tmp/backup.pid'
         self.pidfile_timeout = 5
         self.config = Config('/etc/bitcalm/bitcalm.conf')
-        self.key, self.is_new_client = App._get_key()
+        self.load_settings()
         self.api = Api('localhost', 8443, self.config.uuid, self.key)
+
+    def load_settings(self):
+        with open(App.SETTINGS_PATH, 'r') as f:
+            try:
+                data = pickle.load(f)
+            except EOFError:
+                data = {'key': str(uuid1()), 'registered': False}
+                with open(App.SETTINGS_PATH, 'w') as f:
+                    pickle.dump(data, f)
+        self.key = data['key']
+        self.is_registered = data['registered']
     
-    @staticmethod
-    def _get_key():
-        key_path = '/var/lib/bitcalm/key'
-        with open(key_path) as f:
-            key = f.read()
-        if key:
-            created = False
-        else:
-            key = str(uuid1())
-            with open(key_path, 'w') as f:
-                f.write(key)
-            created = True
-        return (key, created)
+    def save_settings(self):
+        with open(App.SETTINGS_PATH, 'w') as f:
+            pickle.dump({'key': self.key, 'registered': self.is_registered}, f)
     
     def run(self):
         pass
 
 app = App()
 
-if app.is_new_client:
+if not app.is_registered:
     print 'Sending info about new client...'
     res = app.api.hi(platform.uname())
     print res.read()
-    if not res.status == 200:
+    if res.status == 200:
+        app.is_registered = True
+        app.save_settings()
+    else:
         exit('Aborted')
 
 daemon_runner = DaemonRunner(App())
