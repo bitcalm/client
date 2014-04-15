@@ -36,8 +36,8 @@ class Api():
 class App():
     def __init__(self):
         self.stdin_path = '/dev/null'
-        self.stdout_path = '/dev/tty'
-        self.stderr_path = '/dev/tty'
+        self.stdout_path = '/dev/null'
+        self.stderr_path = '/dev/null'
         self.pidfile_path =  '/tmp/backup.pid'
         self.pidfile_timeout = 5
         self.config = Config('/etc/bitcalm/bitcalm.conf')
@@ -59,10 +59,16 @@ class App():
         return (key, created)
     
     def run(self):
-        if self.is_new_client:
-            res = self.api.hi(platform.uname())
-            print 'Server says "%s"' % res.read()
+        pass
 
+app = App()
+
+if app.is_new_client:
+    print 'Sending info about new client...'
+    res = app.api.hi(platform.uname())
+    print res.read()
+    if not res.status == 200:
+        exit('Aborted')
 
 daemon_runner = DaemonRunner(App())
 daemon_runner.do_action()
