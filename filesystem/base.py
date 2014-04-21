@@ -2,11 +2,12 @@ import os
 
 
 class FSNode(object):
-    def __init__(self, path, parent=None):
+    def __init__(self, path, parent=None, ignore=()):
         path = os.path.abspath(path)
         if not parent:
             self._rootdir = os.path.dirname(path)
         self.name = os.path.basename(path) or path
+        self.ignore = ignore
         self.is_dir = os.path.isdir(path)
         self.is_file = not self.is_dir
         self._parent = parent
@@ -35,6 +36,8 @@ class FSNode(object):
                 pass
             else:
                 for f in ls:
+                    if f in self.ignore:
+                        continue
                     path = os.path.join(node_path, f)
                     if not os.path.islink(path):
                         self._children.append(FSNode(path, parent=self))
