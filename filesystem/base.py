@@ -43,6 +43,10 @@ class FSNode(object):
                         self._children.append(FSNode(path, parent=self))
         return self._children
     
+    @children.deleter
+    def children(self):
+        self._children = []
+    
     def iterdirs(self):
         for c in self.children:
             if c.is_dir:
@@ -82,4 +86,5 @@ class FSNode(object):
         if self.is_dir:
             data['files'] = list(f.as_dict() for f in self.iterfiles())
             data['dirs'] = list(d.as_dict() for d in self.iterdirs())
+            del self.children
         return data
