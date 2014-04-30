@@ -82,9 +82,10 @@ class FSNode(object):
         return os.path.join(dirname, self.name)
     
     def as_dict(self):
-        data = {'name': self.name}
+        data = {'n': self.name}
         if self.is_dir:
-            data['files'] = list(f.as_dict() for f in self.iterfiles())
-            data['dirs'] = list(d.as_dict() for d in self.iterdirs())
+            for key, items in (('f', self.files()), ('d', self.dirs())):
+                if items:
+                    data[key] = list(item.as_dict() for item in items)
             del self.children
         return data
