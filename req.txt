@@ -1,0 +1,5 @@
+argparse==1.2.1
+lockfile==0.9.1
+pyinotify==0.9.4
+python-daemon==1.6
+wsgiref==0.1.2
