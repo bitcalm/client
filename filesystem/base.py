@@ -82,10 +82,9 @@ class FSNode(object):
         return os.path.join(dirname, self.name)
     
     def as_dict(self):
-        data = {'n': self.name}
+        data = {'text': self.name}
         if self.is_dir:
-            for key, items in (('f', self.files()), ('d', self.dirs())):
-                if items:
-                    data[key] = list(item.as_dict() for item in items)
-            del self.children
+            data['children'] = [c.as_dict() for c in self.children]
+        else:
+            data['icon'] = 'jstree-file'
         return data

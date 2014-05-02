@@ -48,6 +48,7 @@ class App(object):
                                    'boot', 'lost+found', 'proc', 'tmp',
                                    'sbin', 'bin'))
         root_d = root.as_dict()
+        root_d = {'data': [root_d]}
         root_str = json.dumps(root_d)
         h = sha(root_str).hexdigest()
         if not self.fshash or self.fshash != h:
