@@ -8,7 +8,8 @@ from hashlib import sha512 as sha
 from threading import Timer
 
 from daemon.runner import DaemonRunner
-from pyinotify import WatchManager, ThreadedNotifier, IN_CREATE, IN_DELETE
+from pyinotify import (WatchManager, ThreadedNotifier, 
+                       IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
 from config import Config
 from filesystem import FSNode
@@ -85,7 +86,7 @@ class App(object):
         wm = WatchManager()
         notifier = ThreadedNotifier(wm, FSEvent(changelog=self.changelog))
         notifier.start()
-        mask = IN_CREATE|IN_DELETE
+        mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
         for item in os.listdir(basepath):
             path = os.path.join(basepath, item)
             if item in IGNORE_PATHS or os.path.islink(path):

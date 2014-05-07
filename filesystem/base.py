@@ -98,10 +98,7 @@ class FSEvent(ProcessEvent):
         self.changelog = changelog
     
     def make_path(self, event):
-        path = os.path.join(event.path, event.name)
-        if event.dir:
-            path += '/'
-        return path
+        return (event.pathname + '/') if event.dir else event.pathname
     
     def process_IN_CREATE(self, event):
         self.changelog.append(('c', self.make_path(event)))
@@ -113,3 +110,6 @@ class FSEvent(ProcessEvent):
             self.changelog.remove(create)
         else:
             self.changelog.append(('d', path))
+    
+    process_IN_MOVED_TO = process_IN_CREATE
+    process_IN_MOVED_FROM = process_IN_DELETE
