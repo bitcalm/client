@@ -1,3 +1,4 @@
+import json
 from random import random
 from httplib import HTTPSConnection
 from hashlib import sha512 as sha
@@ -62,3 +63,6 @@ class Api(object):
     
     def set_fs(self, fs):
         return self._send('set_fs', files={'fs': fs})
+    
+    def update_fs(self, changes):
+        return self._send('fs/update', files={'changes': json.dumps(changes)})

@@ -1,5 +1,7 @@
 import os
 
+from pyinotify import ProcessEvent
+
 
 class FSNode(object):
     def __init__(self, path, parent=None, ignore=()):
@@ -88,3 +90,26 @@ class FSNode(object):
         else:
             data['icon'] = 'jstree-file'
         return data
+
+
+class FSEvent(ProcessEvent):
+    def __init__(self, changelog, *args, **kwargs):
+        super(FSEvent, self).__init__(*args, **kwargs)
+        self.changelog = changelog
+    
+    def make_path(self, event):
+        path = os.path.join(event.path, event.name)
+        if event.dir:
+            path += '/'
+        return path
+    
+    def process_IN_CREATE(self, event):
+        self.changelog.append(('c', self.make_path(event)))
+
+    def process_IN_DELETE(self, event):
+        path = self.make_path(event)
+        create = ('c', path)
+        if create in self.changelog:
+            self.changelog.remove(create)
+        else:
+            self.changelog.append(('d', path))

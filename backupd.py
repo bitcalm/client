@@ -1,15 +1,24 @@
 #!/usr/bin/python
+import os
 import json
 import pickle
 import platform
 from uuid import uuid1
 from hashlib import sha512 as sha
+from threading import Timer
 
 from daemon.runner import DaemonRunner
+from pyinotify import WatchManager, ThreadedNotifier, IN_CREATE, IN_DELETE
 
 from config import Config
 from filesystem import FSNode
+from filesystem.base import FSEvent
 from api import Api
+
+
+IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
+                'lost+found', 'proc', 'tmp', 'sbin', 'bin')
+UPLOAD_PERIOD = 1800
 
 
 class App(object):
@@ -24,6 +33,8 @@ class App(object):
         self.config = Config('/etc/bitcalm/bitcalm.conf')
         self.load_settings()
         self.api = Api('localhost', 8443, self.config.uuid, self.key)
+        self.changelog = []
+        self.loop = None
 
     def load_settings(self):
         with open(App.SETTINGS_PATH, 'r') as f:
@@ -43,10 +54,24 @@ class App(object):
                          'registered': self.is_registered,
                          'fshash': self.fshash}, f)
     
+    def start_loop(self):
+        if self.loop and self.loop.is_alive():
+            self.loop.cancel()
+        self.loop = Timer(UPLOAD_PERIOD, self.upload_fs)
+        self.loop.start()
+    
+    def upload_fs(self):
+        if self.changelog:
+            current = list(self.changelog)
+            status, content = self.api.update_fs(current)
+            if status == 200:
+                del self.changelog[:len(current)]
+        self.start_loop()
+            
+
     def run(self):
-        root = FSNode('/', ignore=('sys', 'dev', 'root', 'cdrom',
-                                   'boot', 'lost+found', 'proc', 'tmp',
-                                   'sbin', 'bin'))
+        basepath = '/'
+        root = FSNode(basepath, ignore=IGNORE_PATHS)
         root_d = root.as_dict()
         root_d = {'data': [root_d]}
         root_str = json.dumps(root_d)
@@ -56,6 +81,18 @@ class App(object):
             if status == 200:
                 self.fshash = h
                 self.save_settings()
+
+        wm = WatchManager()
+        notifier = ThreadedNotifier(wm, FSEvent(changelog=self.changelog))
+        notifier.start()
+        mask = IN_CREATE|IN_DELETE
+        for item in os.listdir(basepath):
+            path = os.path.join(basepath, item)
+            if item in IGNORE_PATHS or os.path.islink(path):
+                continue
+            wm.add_watch(path, mask, rec=True)
+        self.start_loop()
+
 
 app = App()
 
