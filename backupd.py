@@ -106,5 +106,5 @@ if not app.is_registered:
     else:
         exit('Aborted')
 
-daemon_runner = DaemonRunner(App())
+daemon_runner = DaemonRunner(app)
 daemon_runner.do_action()
