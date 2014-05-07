@@ -62,7 +62,7 @@ class Api(object):
         return self._send('hi', {'host': uname[1], 'uname': ' '.join(uname)})
     
     def set_fs(self, fs):
-        return self._send('set_fs', files={'fs': fs})
+        return self._send('fs/set', files={'fs': fs})
     
     def update_fs(self, changes):
         return self._send('fs/update', files={'changes': json.dumps(changes)})
