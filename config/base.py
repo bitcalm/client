@@ -1,4 +1,6 @@
 import re
+import pickle
+from uuid import uuid1
 
 from .exceptions import ConfigEntryError, ConfigSyntaxError
 
@@ -43,3 +45,27 @@ class Config:
             Config.validate(line[0], line[1])
             config[line[0]] = line[1]
         return config
+
+
+class Status(object):
+    def __init__(self, path):
+        self.path = path
+        self.load()
+    
+    def load(self):
+        with open(self.path, 'r') as f:
+            try:
+                data = pickle.load(f)
+            except EOFError:
+                data = {'key': str(uuid1()), 'registered': False}
+                with open(self.path, 'w') as f:
+                    pickle.dump(data, f)
+        self.key = data['key']
+        self.is_registered = data['registered']
+        self.fshash = data.get('fshash', None)
+    
+    def save(self):
+        with open(self.path, 'w') as f:
+            pickle.dump({'key': self.key,
+                         'registered': self.is_registered,
+                         'fshash': self.fshash}, f)
