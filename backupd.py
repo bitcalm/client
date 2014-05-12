@@ -1,11 +1,12 @@
 #!/usr/bin/python
 import os
+import sys
 import signal
-import lockfile
 import json
 import time
 import platform
 from hashlib import sha512 as sha
+from lockfile.pidlockfile import PIDLockFile
 
 from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
@@ -19,16 +20,17 @@ from filesystem.base import FSEvent, FSNode
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
 UPLOAD_PERIOD = 1800
+PIDFILE_PATH = '/tmp/bitcalm.pid'
 
 
 api = Api('localhost', 8443, config.uuid, client_status.key)
 notifier = None
 
-def stop(signum, frame):
+def on_stop(signum, frame):
     global notifier
     if notifier:
         notifier.stop()
-    raise SystemExit('Terminating')
+    raise SystemExit('Terminated process with pid %i' % os.getpid())
 
 def upload_fs(changelog):
     if not changelog:
@@ -38,8 +40,7 @@ def upload_fs(changelog):
     if status == 200:
         del changelog[:len(current)]
 
-
-if __name__ == '__main__':
+def run():
     if not client_status.is_registered:
         print 'Sending info about new client...'
         status, content = api.hi(platform.uname())
@@ -50,8 +51,9 @@ if __name__ == '__main__':
         else:
             exit('Aborted')
 
-    context = DaemonContext(pidfile=lockfile.FileLock('/tmp/bitcalm.pid'),
-                            signal_map={signal.SIGTERM: stop})
+    context = DaemonContext(pidfile=PIDLockFile(PIDFILE_PATH),
+                            signal_map={signal.SIGTERM: on_stop})
+    print 'Starting daemon'
     with context:
         basepath = '/'
         root = FSNode(basepath, ignore=IGNORE_PATHS)
@@ -66,6 +68,7 @@ if __name__ == '__main__':
 
         wm = WatchManager()
         changelog = []
+        global notifier
         notifier = ThreadedNotifier(wm, FSEvent(changelog=changelog))
         notifier.start()
         mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
@@ -77,3 +80,29 @@ if __name__ == '__main__':
         while True:
             time.sleep(UPLOAD_PERIOD)
             upload_fs(changelog)
+
+def stop():
+    with open(PIDFILE_PATH, 'r') as f:
+        pid = int(f.read().strip())
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError, e:
+        print 'Failed to terminate %(pid)i: %(e)s' % vars()
+
+def restart():
+    stop()
+    run()
+
+def usage():
+    exit('Usage: %s start|stop|restart' % sys.argv[0])
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        usage()
+    actions = {'start': run,
+               'stop': stop,
+               'restart': restart}
+    func = actions.get(sys.argv[1])
+    if not func:
+        usage()
+    func()
