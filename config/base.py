@@ -48,6 +48,8 @@ class Config:
 
 
 class Status(object):
+    OPTIONS = ('key', 'is_registered', 'fshash', 'schedule')
+    
     def __init__(self, path):
         self.path = path
         self.load()
@@ -57,15 +59,13 @@ class Status(object):
             try:
                 data = pickle.load(f)
             except EOFError:
-                data = {'key': str(uuid1()), 'registered': False}
+                data = {'key': str(uuid1()), 'is_registered': False}
                 with open(self.path, 'w') as f:
                     pickle.dump(data, f)
-        self.key = data['key']
-        self.is_registered = data['registered']
-        self.fshash = data.get('fshash', None)
+        for option in Status.OPTIONS:
+            setattr(self, option, data.get(option))
     
     def save(self):
         with open(self.path, 'w') as f:
-            pickle.dump({'key': self.key,
-                         'registered': self.is_registered,
-                         'fshash': self.fshash}, f)
+            data = {opt: getattr(self, opt, None) for opt in Status.OPTIONS}
+            pickle.dump(data, f)

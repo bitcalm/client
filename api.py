@@ -15,16 +15,18 @@ class Api(object):
     def _send(self, path, data={}, files={}, method='POST'):
         data.update(self.base_params)
         headers = {'Accept': 'text/plain'}
+        url = '/api/%s/' % path
         if files:
             body = self.encode_multipart_data(data, files)
             headers['Content-type'] = 'multipart/form-data; boundary=%s' % Api.BOUNDARY
+            method = 'POST'
         else:
             body = urlencode(data)
             headers['Content-type'] = 'application/x-www-form-urlencoded'
-        self.conn.request(method,
-                          '/api/%s/' % path,
-                          body,
-                          headers)
+        if method == 'GET':
+            url = '%s?%s' % (url, body)
+            body = None
+        self.conn.request(method, url, body, headers)
         response = self.conn.getresponse()
         result = (response.status, response.read())
         self.conn.close()
@@ -66,3 +68,9 @@ class Api(object):
     
     def update_fs(self, changes):
         return self._send('fs/update', files={'changes': json.dumps(changes)})
+    
+    def get_settings(self):
+        status, content = self._send('settings', method='GET')
+        if status == 200:
+            content = json.loads(content)
+        return status, content
