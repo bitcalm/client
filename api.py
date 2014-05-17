@@ -4,6 +4,8 @@ from httplib import HTTPSConnection
 from hashlib import sha512 as sha
 from urllib import urlencode
 
+from config import config, status
+
 
 class Api(object):
     BOUNDARY = '-' * 20 + sha(str(random())).hexdigest()[:20]
@@ -74,3 +76,6 @@ class Api(object):
         if status == 200:
             content = json.loads(content)
         return status, content
+
+
+api = Api('localhost', 8443, config.uuid, status.key)

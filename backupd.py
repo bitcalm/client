@@ -12,8 +12,8 @@ from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
                        IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
-from config import config, status as client_status
-from api import Api
+from config import status as client_status
+from api import api
 from filesystem.base import FSEvent, FSNode
 
 
@@ -23,7 +23,6 @@ UPLOAD_PERIOD = 1800
 PIDFILE_PATH = '/tmp/bitcalm.pid'
 
 
-api = Api('localhost', 8443, config.uuid, client_status.key)
 notifier = None
 
 def on_stop(signum, frame):
@@ -57,6 +56,7 @@ def run():
     with context:
         status, content = api.get_settings()
         if status == 200:
+            client_status.files = content.pop('files')
             client_status.schedule = content
             client_status.save()
 

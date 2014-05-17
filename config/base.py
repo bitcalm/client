@@ -48,13 +48,10 @@ class Config:
 
 
 class Status(object):
-    OPTIONS = ('key', 'is_registered', 'fshash', 'schedule')
+    OPTIONS = ('key', 'is_registered', 'fshash', 'schedule', 'files')
     
-    def __init__(self, path):
+    def __init__(self, path, **kwargs):
         self.path = path
-        self.load()
-    
-    def load(self):
         with open(self.path, 'r') as f:
             try:
                 data = pickle.load(f)
@@ -63,7 +60,9 @@ class Status(object):
                 with open(self.path, 'w') as f:
                     pickle.dump(data, f)
         for option in Status.OPTIONS:
-            setattr(self, option, data.get(option))
+            setattr(self,
+                    option,
+                    data.get(option, kwargs.get(option)))
     
     def save(self):
         with open(self.path, 'w') as f:
