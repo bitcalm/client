@@ -48,7 +48,13 @@ class Config:
 
 
 class Status(object):
-    OPTIONS = ('key', 'is_registered', 'fshash', 'schedule', 'files')
+    OPTIONS = ('key',
+               'is_registered',
+               'fshash',
+               'schedule',
+               'files',
+               'prev_backup',
+               'amazon')
     
     def __init__(self, path, **kwargs):
         self.path = path

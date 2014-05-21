@@ -7,6 +7,7 @@ import time
 import platform
 from hashlib import sha512 as sha
 from lockfile.pidlockfile import PIDLockFile
+from datetime import datetime, timedelta, date
 
 from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
@@ -15,12 +16,56 @@ from pyinotify import (WatchManager, ThreadedNotifier,
 from config import status as client_status
 from api import api
 from filesystem.base import FSEvent, FSNode
+from backup import backup, get_next
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
 UPLOAD_PERIOD = 1800
 PIDFILE_PATH = '/tmp/bitcalm.pid'
+
+
+class Action(object):
+    def __init__(self, nexttime, func, *args, **kwargs):
+        self.lastexectime = None
+        self._func = func
+        if callable(nexttime):
+            self._period = 0
+            self._next = nexttime
+        else:
+            self._period = nexttime
+            self._next = self._default_next
+        self.next()
+        self._args = args
+        self._kwargs = kwargs
+    
+    def __str__(self):
+        return '%s at %s' % (self._func, self.time)
+    
+    def __call__(self):
+        self.lastexectime = datetime.now()
+        self._func(*self._args, **self._kwargs)
+        self.next()
+    
+    def __cmp__(self, other):
+        if self.time > other.time:
+            return 1
+        if self.time < other.time:
+            return -1
+        return 0
+    
+    def _default_next(self):
+        return (self.lastexectime or datetime.now()) \
+            + timedelta(seconds=self._period)
+    
+    def next(self):
+        self.time = self._next()
+    
+    def time_left(self):
+        now = datetime.now()
+        if self.time > now:
+            return (self.time - now).seconds
+        return 0
 
 
 notifier = None
@@ -39,6 +84,11 @@ def upload_fs(changelog):
     if status == 200:
         del changelog[:len(current)]
 
+def make_backup():
+    backup()
+    client_status.schedule['last'] = date.today().strftime('%Y.%m.%d')
+    client_status.save()
+
 def run():
     if not client_status.is_registered:
         print 'Sending info about new client...'
@@ -56,7 +106,10 @@ def run():
     with context:
         status, content = api.get_settings()
         if status == 200:
-            client_status.files = content.pop('files')
+            client_status.files = content.pop('files').split('\n')
+            client_status.amazon = content.pop('amazon')
+            content['time'] = (int(content['time'][:2]),
+                               int(content['time'][2:]))
             client_status.schedule = content
             client_status.save()
 
@@ -82,9 +135,16 @@ def run():
             if item in IGNORE_PATHS or os.path.islink(path):
                 continue
             wm.add_watch(path, mask, rec=True)
+
+        actions = (Action(UPLOAD_PERIOD,
+                          upload_fs,
+                          changelog),
+                   Action(get_next(),
+                          make_backup))
         while True:
-            time.sleep(UPLOAD_PERIOD)
-            upload_fs(changelog)
+            action = min(actions)
+            time.sleep(action.time_left())
+            action()
 
 def stop():
     with open(PIDFILE_PATH, 'r') as f:
