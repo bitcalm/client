@@ -13,10 +13,10 @@ from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
                        IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
+import backup
 from config import status as client_status
 from api import api
 from filesystem.base import FSEvent, FSNode
-from backup import backup, get_next
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -44,8 +44,8 @@ class Action(object):
     
     def __call__(self):
         self.lastexectime = datetime.now()
-        self._func(*self._args, **self._kwargs)
-        self.next()
+        if self._func(*self._args, **self._kwargs):
+            self.next()
     
     def __cmp__(self, other):
         if self.time > other.time:
@@ -78,16 +78,29 @@ def on_stop(signum, frame):
 
 def upload_fs(changelog):
     if not changelog:
-        return
+        return True
     current = list(changelog)
     status, content = api.update_fs(current)
     if status == 200:
         del changelog[:len(current)]
+        return True
+    return False
 
 def make_backup():
-    backup()
+    status, content = api.set_backup_info('compress', time=time.time())
+    if not status == 200:
+        return False
+    backup_id = content
+    backup.compress()
+    api.set_backup_info('upload', backup_id=backup_id)
+    size = backup.upload()
     client_status.schedule['last'] = date.today().strftime('%Y.%m.%d')
     client_status.save()
+    api.set_backup_info('complete',
+                        backup_id=backup_id,
+                        time=time.time(),
+                        size=size)
+    return True
 
 def run():
     if not client_status.is_registered:
@@ -139,7 +152,7 @@ def run():
         actions = (Action(UPLOAD_PERIOD,
                           upload_fs,
                           changelog),
-                   Action(get_next(),
+                   Action(backup.get_next(),
                           make_backup))
         while True:
             action = min(actions)

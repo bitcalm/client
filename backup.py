@@ -9,6 +9,8 @@ from boto.s3.key import Key
 from config import status
 
 
+TMP_FILEPATH = '/tmp/backup.tar.gz'
+
 class SCHEDULE:
     DAILY = 'daily'
     WEEKLY = 'weekly'
@@ -77,16 +79,24 @@ def next_date():
     return func() if func else None
 
 
-def backup():
-    tmp_file = '/tmp/backup.tar.gz'
+def compress(tmp_file=TMP_FILEPATH):
     with tarfile.open(tmp_file, 'w:gz') as tar:
         for path in status.files:
             tar.add(path)
-    
+    return tmp_file
+
+
+def upload(filepath=TMP_FILEPATH, delete=True):
     conn = S3Connection(status.amazon['key_id'],
                         status.amazon['secret_key'])
     bucket = conn.get_bucket(status.amazon['bucket'])
     k = Key(bucket)
-    k.key = 'backup.tar.gz'
-    k.set_contents_from_filename(tmp_file, encrypt_key=True)
-    os.remove(tmp_file)
+    k.key = os.path.basename(filepath)
+    size = k.set_contents_from_filename(filepath, encrypt_key=True)
+    if delete:
+        os.remove(filepath)
+    return size
+
+
+def backup(filepath=TMP_FILEPATH):
+    return upload(compress(filepath))

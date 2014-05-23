@@ -76,6 +76,15 @@ class Api(object):
         if status == 200:
             content = json.loads(content)
         return status, content
+    
+    def set_backup_info(self, status, backup_id=None, **kwargs):
+        data = {k: v for k, v in kwargs.iteritems() if k in ('time', 'size')}
+        if backup_id:
+            data['id'] = backup_id
+        s, c = self._send('backup/%s' % status, data)
+        if not backup_id and s == 200:
+            c = int(c)
+        return s, c
 
 
 api = Api('localhost', 8443, config.uuid, status.key)
