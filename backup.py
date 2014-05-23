@@ -95,7 +95,7 @@ def upload(filepath=TMP_FILEPATH, delete=True):
     size = k.set_contents_from_filename(filepath, encrypt_key=True)
     if delete:
         os.remove(filepath)
-    return size
+    return k.key, size
 
 
 def backup(filepath=TMP_FILEPATH):

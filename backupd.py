@@ -93,12 +93,13 @@ def make_backup():
     backup_id = content
     backup.compress()
     api.set_backup_info('upload', backup_id=backup_id)
-    size = backup.upload()
+    key, size = backup.upload()
     client_status.schedule['last'] = date.today().strftime('%Y.%m.%d')
     client_status.save()
     api.set_backup_info('complete',
                         backup_id=backup_id,
                         time=time.time(),
+                        keyname=key,
                         size=size)
     return True
 

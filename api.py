@@ -78,7 +78,8 @@ class Api(object):
         return status, content
     
     def set_backup_info(self, status, backup_id=None, **kwargs):
-        data = {k: v for k, v in kwargs.iteritems() if k in ('time', 'size')}
+        allowed = ('time', 'size', 'keyname')
+        data = {k: v for k, v in kwargs.iteritems() if k in allowed}
         if backup_id:
             data['id'] = backup_id
         s, c = self._send('backup/%s' % status, data)
