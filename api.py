@@ -72,7 +72,7 @@ class Api(object):
         return self._send('fs/update', files={'changes': json.dumps(changes)})
     
     def get_settings(self):
-        status, content = self._send('settings', method='GET')
+        status, content = self._send('backup/settings', method='GET')
         if status == 200:
             content = json.loads(content)
         return status, content
