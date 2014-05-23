@@ -37,7 +37,6 @@ class Api(object):
     def encode_multipart_data(self, data={}, files={}):
         """ Returns multipart/form-data encoded data
         """
-        data.update(self.base_params)
         boundary = '--' + Api.BOUNDARY
         crlf = '\r\n'
         
