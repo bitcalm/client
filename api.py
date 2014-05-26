@@ -70,12 +70,6 @@ class Api(object):
     def update_fs(self, changes):
         return self._send('fs/update', files={'changes': json.dumps(changes)})
     
-    def get_settings(self):
-        status, content = self._send('backup/settings', method='GET')
-        if status == 200:
-            content = json.loads(content)
-        return status, content
-    
     def get_schedule(self):
         data = {}
         if client_status.schedule:
