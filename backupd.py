@@ -5,7 +5,7 @@ import signal
 import json
 import time
 import platform
-from hashlib import sha512 as sha
+from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime, timedelta, date
 
