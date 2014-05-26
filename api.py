@@ -4,7 +4,7 @@ from httplib import HTTPSConnection
 from hashlib import sha512 as sha
 from urllib import urlencode
 
-from config import config, status
+from config import config, status as client_status
 
 
 class Api(object):
@@ -76,7 +76,31 @@ class Api(object):
             content = json.loads(content)
         return status, content
     
-    def set_backup_info(self, status, backup_id=None, **kwargs):
+    def get_schedule(self):
+        data = {}
+        if client_status.schedule:
+            data['v'] = client_status.schedule['version']
+        status, content = self._send('backup/schedule',
+                                     data=data,
+                                     method='GET')
+        if status == 200:
+            content = json.loads(content)
+        return status, content
+    
+    def get_files(self):
+        data = {}
+        if client_status.files_hash:
+            data['fhash'] = client_status.files_hash
+        return self._send('backup/files', data=data, method='GET')
+
+    def get_s3_access(self):
+        status, content = self._send('backup/access', method='GET')
+        if status == 200:
+            content = json.loads(content)
+        return status, content
+    
+    def set_backup_info(self, status, **kwargs):
+        backup_id = kwargs.pop('backup_id', None)
         allowed = ('time', 'size', 'keyname')
         data = {k: v for k, v in kwargs.iteritems() if k in allowed}
         if backup_id:
@@ -87,4 +111,4 @@ class Api(object):
         return s, c
 
 
-api = Api('localhost', 8443, config.uuid, status.key)
+api = Api('localhost', 8443, config.uuid, client_status.key)

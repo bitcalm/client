@@ -53,6 +53,7 @@ class Status(object):
                'fshash',
                'schedule',
                'files',
+               'files_hash',
                'prev_backup',
                'amazon')
     

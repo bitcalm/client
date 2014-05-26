@@ -22,8 +22,8 @@ from filesystem.base import FSEvent, FSNode
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
 UPLOAD_PERIOD = 1800
+SCHEDULE_UPDATE_PERIOD = 3600
 PIDFILE_PATH = '/tmp/bitcalm.pid'
-
 
 class Action(object):
     def __init__(self, nexttime, func, *args, **kwargs):
@@ -46,6 +46,8 @@ class Action(object):
         self.lastexectime = datetime.now()
         if self._func(*self._args, **self._kwargs):
             self.next()
+        else:
+            self.delay()
     
     def __cmp__(self, other):
         if self.time > other.time:
@@ -60,6 +62,9 @@ class Action(object):
     
     def next(self):
         self.time = self._next()
+    
+    def delay(self, period=600):
+        self.time = datetime.now() + timedelta(seconds=period)
     
     def time_left(self):
         now = datetime.now()
@@ -80,27 +85,51 @@ def upload_fs(changelog):
     if not changelog:
         return True
     current = list(changelog)
-    status, content = api.update_fs(current)
+    status = api.update_fs(current)[0]
     if status == 200:
         del changelog[:len(current)]
         return True
     return False
 
+def update_schedule(on_update=None, on_404=False):
+    status, content = api.get_schedule()
+    if status == 200:
+        content['time'] = (int(content['time'][:2]),
+                           int(content['time'][2:]))
+        client_status.schedule = content
+        client_status.save()
+        if on_update:
+            on_update()
+        return True
+    return {304: True, 404: on_404}.get(status, False)
+
+def update_files():
+    status, content = api.get_files()
+    if status == 200:
+        client_status.files_hash = sha(content).hexdigest()
+        client_status.files = content.split('\n')
+        client_status.save()
+        return True
+    elif status == 304:
+        return True
+    return False
+
 def make_backup():
-    status, content = api.set_backup_info('compress', time=time.time())
+    if not update_files() or not client_status.files:
+        return False
+    status, backup_id = api.set_backup_info('compress', time=time.time())
     if not status == 200:
         return False
-    backup_id = content
     backup.compress()
-    api.set_backup_info('upload', backup_id=backup_id)
+    kwargs = {'backup_id': backup_id}
+    api.set_backup_info('upload', **kwargs)
     key, size = backup.upload()
-    client_status.schedule['last'] = date.today().strftime('%Y.%m.%d')
+    client_status.prev_backup = date.today().strftime('%Y.%m.%d')
     client_status.save()
-    api.set_backup_info('complete',
-                        backup_id=backup_id,
-                        time=time.time(),
-                        keyname=key,
-                        size=size)
+    kwargs['time'] = time.time()
+    kwargs['keyname'] = key
+    kwargs['size'] = size
+    api.set_backup_info('complete', **kwargs)
     return True
 
 def run():
@@ -118,15 +147,6 @@ def run():
                             signal_map={signal.SIGTERM: on_stop})
     print 'Starting daemon'
     with context:
-        status, content = api.get_settings()
-        if status == 200:
-            client_status.files = content.pop('files').split('\n')
-            client_status.amazon = content.pop('amazon')
-            content['time'] = (int(content['time'][:2]),
-                               int(content['time'][2:]))
-            client_status.schedule = content
-            client_status.save()
-
         basepath = '/'
         root = FSNode(basepath, ignore=IGNORE_PATHS)
         root_d = root.as_dict()
@@ -149,12 +169,36 @@ def run():
             if item in IGNORE_PATHS or os.path.islink(path):
                 continue
             wm.add_watch(path, mask, rec=True)
-
-        actions = (Action(UPLOAD_PERIOD,
+        
+        status, content = api.get_s3_access()
+        if status == 200:
+            client_status.amazon = content
+        
+        actions = [Action(UPLOAD_PERIOD,
                           upload_fs,
-                          changelog),
-                   Action(backup.get_next(),
-                          make_backup))
+                          changelog),]
+        
+        backup_action = lambda: Action(backup.get_next(), make_backup)
+        
+        def on_schedule_update(actions=actions):
+            actions[-1] = backup_action()
+        
+        update_schedule_action = lambda: Action(SCHEDULE_UPDATE_PERIOD,
+                                                update_schedule,
+                                                on_update=on_schedule_update)
+
+        if update_schedule() or client_status.schedule:
+            actions.append(update_schedule_action())
+            actions.append(backup_action())
+        else:
+            def on_schedule_download(actions=actions):
+                actions[-1] = update_schedule_action()
+                actions.append(backup_action())
+            actions.append(Action(SCHEDULE_UPDATE_PERIOD,
+                                  update_schedule,
+                                  on_update=on_schedule_download,
+                                  on_404=True))
+        
         while True:
             action = min(actions)
             time.sleep(action.time_left())
