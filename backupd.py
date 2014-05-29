@@ -120,10 +120,11 @@ def make_backup():
     status, backup_id = api.set_backup_info('compress', time=time.time())
     if not status == 200:
         return False
-    backup.compress()
+    tmp = '/tmp/backup_%s.tar.gz' % datetime.now().strftime('%Y.%m.%d_%H%M')
+    backup.compress(tmp)
     kwargs = {'backup_id': backup_id}
     api.set_backup_info('upload', **kwargs)
-    key, size = backup.upload()
+    key, size = backup.upload(tmp)
     client_status.prev_backup = date.today().strftime('%Y.%m.%d')
     client_status.save()
     kwargs['time'] = time.time()
