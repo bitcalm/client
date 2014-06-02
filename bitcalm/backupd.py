@@ -218,9 +218,9 @@ def restart():
     run()
 
 def usage():
-    exit('Usage: %s start|stop|restart' % sys.argv[0])
+    exit('Usage: %s start|stop|restart' % os.path.basename(sys.argv[0]))
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) != 2:
         usage()
     actions = {'start': run,
@@ -230,3 +230,6 @@ if __name__ == '__main__':
     if not func:
         usage()
     func()
+
+if __name__ == '__main__':
+    main()

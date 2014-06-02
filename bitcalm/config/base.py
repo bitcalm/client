@@ -60,10 +60,9 @@ class Status(object):
     def __init__(self, path, **kwargs):
         self.path = path
         with open(self.path, 'r') as f:
-            try:
-                data = pickle.load(f)
-            except EOFError:
-                data = {'key': str(uuid1()), 'is_registered': False}
+            data = pickle.load(f)
+            if 'key' not in data:
+                data['key'] = kwargs.get('key', str(uuid1()))
                 with open(self.path, 'w') as f:
                     pickle.dump(data, f)
         for option in Status.OPTIONS:
