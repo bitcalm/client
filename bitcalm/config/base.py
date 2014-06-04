@@ -9,22 +9,40 @@ class Config:
     DEFAULT_CONF = '/etc/bitcalm.conf'
     COMMENT_SYMBOL = '#'
     REQUIRED = ('uuid',)
-    ALLOWED = ('uuid',)
+    ALLOWED = ('uuid', 'host', 'port')
     VALIDATOR = {'uuid': re.compile('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')}
+    ENTRY = {'host': {'default': 'bitcalm.com'},
+             'port': {'default': 443, 'type': int}}
     
     @staticmethod
     def validate(entry, value):
         if entry not in Config.ALLOWED:
             raise ConfigEntryError(entry, 'Disallowed entry: %s' % entry)
-        if not Config.VALIDATOR[entry].match(value):
+        validator = Config.VALIDATOR.get(entry)
+        if validator and not validator.match(value):
             raise ConfigEntryError(entry, 'Wrong %s: %s' % (entry, value))
+    
+    @classmethod
+    def get_default(cls, entry):
+        data = cls.ENTRY.get(entry)
+        return data.get('default') if data else None
+    
+    @classmethod
+    def get_type(cls, entry):
+        data = cls.ENTRY.get(entry)
+        return data.get('type') if data else None
     
     def __init__(self, filename=DEFAULT_CONF):
         conf = self._parse_config(filename)
         for entry in Config.REQUIRED:
             if entry not in conf:
                 raise ConfigEntryError(entry, 'There is no %s in config file (%s)' % (entry, filename))
-        self.uuid = self._parse_config(filename).get('uuid')
+        for entry in Config.ALLOWED:
+            value = conf.get(entry, Config.get_default(entry))
+            conv_type = Config.get_type(entry)
+            if conv_type:
+                value = conv_type(value)
+            setattr(self, entry, value)
         self.filename = filename
     
     def _parse_config(self, filename):
@@ -38,12 +56,11 @@ class Config:
             line = line.split('=')
             if len(line) != 2:
                 raise ConfigSyntaxError('Invalid config syntax at line %i' % i)
-            line[0] = line[0].strip()
-            line[1] = line[1].strip()
-            if not line[1]:
+            entry, value = [s.strip() for s in line]
+            if not value:
                 raise ConfigSyntaxError('Invalid config syntax at line %i' % i)
-            Config.validate(line[0], line[1])
-            config[line[0]] = line[1]
+            Config.validate(entry, value)
+            config[entry] = value
         return config
 
 

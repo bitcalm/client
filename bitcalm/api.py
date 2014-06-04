@@ -105,4 +105,4 @@ class Api(object):
         return s, c
 
 
-api = Api('localhost', 8443, config.uuid, client_status.key)
+api = Api(config.host, config.port, config.uuid, client_status.key)
