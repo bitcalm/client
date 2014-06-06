@@ -1,4 +1,5 @@
 import json
+import zlib
 from random import random
 from httplib import HTTPSConnection
 from hashlib import sha512 as sha
@@ -65,10 +66,11 @@ class Api(object):
         return self._send('hi', {'host': uname[1], 'uname': ' '.join(uname)})
     
     def set_fs(self, fs):
-        return self._send('fs/set', files={'fs': fs})
+        return self._send('fs/set', files={'fs': zlib.compress(fs, 9)})
     
     def update_fs(self, changes):
-        return self._send('fs/update', files={'changes': json.dumps(changes)})
+        changes = zlib.compress(json.dumps(changes), 9)
+        return self._send('fs/update', files={'changes': changes})
     
     def get_schedule(self):
         data = {}
