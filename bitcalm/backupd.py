@@ -8,12 +8,14 @@ import platform
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime, timedelta, date
+from logging import FileHandler
 
 from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
                        IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
 import backup
+import log
 from config import status as client_status
 from api import api
 from filesystem.base import FSEvent, FSNode
@@ -43,18 +45,17 @@ class Action(object):
         return '%s at %s' % (self._func, self.time)
     
     def __call__(self):
+        log.info('Perform action: %s' % self._func)
         self.lastexectime = datetime.now()
         if self._func(*self._args, **self._kwargs):
             self.next()
+            log.info('Action %s complete' % self._func)
         else:
             self.delay()
+            log.error('Action %s failed' % self._func)
     
     def __cmp__(self, other):
-        if self.time > other.time:
-            return 1
-        if self.time < other.time:
-            return -1
-        return 0
+        return cmp(self.time, other.time)
     
     def _default_next(self):
         return (self.lastexectime or datetime.now()) \
@@ -146,8 +147,13 @@ def run():
 
     context = DaemonContext(pidfile=PIDLockFile(PIDFILE_PATH),
                             signal_map={signal.SIGTERM: on_stop})
+    context.files_preserve = map(lambda h: h.stream,
+                                 filter(lambda h: isinstance(h, FileHandler),
+                                        log.logger.handlers))
     print 'Starting daemon'
     with context:
+        log.info('Daemon started')
+        log.info('Build filesystem image')
         basepath = '/'
         root = FSNode(basepath, ignore=IGNORE_PATHS)
         root_d = root.as_dict()
@@ -158,13 +164,18 @@ def run():
             if status == 200:
                 client_status.fshash = h
                 client_status.save()
+                log.info('Filesystem image updated')
+            else:
+                log.error('Filesystem image update failed')
 
+        log.info('Create watch manager')
         wm = WatchManager()
         changelog = []
         global notifier
         notifier = ThreadedNotifier(wm, FSEvent(changelog=changelog))
         notifier.start()
         mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
+        log.info('Start watching filesystem changes')
         for item in os.listdir(basepath):
             path = os.path.join(basepath, item)
             if item in IGNORE_PATHS or os.path.islink(path):
@@ -174,6 +185,8 @@ def run():
         status, content = api.get_s3_access()
         if status == 200:
             client_status.amazon = content
+        else:
+            log.error('Getting S3 access failed')
         
         actions = [Action(UPLOAD_PERIOD,
                           upload_fs,
@@ -200,8 +213,10 @@ def run():
                                   on_update=on_schedule_download,
                                   on_404=True))
         
+        log.info('Start main loop')
         while True:
             action = min(actions)
+            log.info('Next action is %s' % action)
             time.sleep(action.time_left())
             action()
 
@@ -212,6 +227,8 @@ def stop():
         os.kill(pid, signal.SIGTERM)
     except OSError, e:
         print 'Failed to terminate %(pid)i: %(e)s' % vars()
+    else:
+        log.info('Stopping')
 
 def restart():
     stop()
