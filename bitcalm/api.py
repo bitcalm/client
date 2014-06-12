@@ -72,6 +72,13 @@ class Api(object):
         changes = zlib.compress(json.dumps(changes), 9)
         return self._send('fs/update', files={'changes': changes})
     
+    def upload_log(self, entries):
+        if len(entries) > 1:
+            kwargs = {'files': {'entries': zlib.compress(';'.join(entries), 9)}}
+        else:
+            kwargs = {'data': {'entries': entries[0]}}
+        return self._send('log', **kwargs)
+    
     def get_schedule(self):
         data = {}
         if client_status.schedule:

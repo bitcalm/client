@@ -24,8 +24,10 @@ from filesystem.base import FSEvent, FSNode
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
 UPLOAD_PERIOD = 1800
+LOG_UPLOAD_PERIOD = 300
 SCHEDULE_UPDATE_PERIOD = 3600
 PIDFILE_PATH = '/tmp/bitcalm.pid'
+
 
 class Action(object):
     def __init__(self, nexttime, func, *args, **kwargs):
@@ -76,11 +78,13 @@ class Action(object):
 
 notifier = None
 
+
 def on_stop(signum, frame):
     global notifier
     if notifier:
         notifier.stop()
     raise SystemExit('Terminated process with pid %i' % os.getpid())
+
 
 def upload_fs(changelog):
     if not changelog:
@@ -91,6 +95,18 @@ def upload_fs(changelog):
         del changelog[:len(current)]
         return True
     return False
+
+
+def upload_log(entries=log.upload):
+    if not entries:
+        return True
+    current = list(entries)
+    status = api.upload_log(entries)[0]
+    if status == 200:
+        del entries[:len(current)]
+        return True
+    return False
+
 
 def update_schedule(on_update=None, on_404=False):
     status, content = api.get_schedule()
@@ -104,6 +120,7 @@ def update_schedule(on_update=None, on_404=False):
         return True
     return {304: True, 404: on_404}.get(status, False)
 
+
 def update_files():
     status, content = api.get_files()
     if status == 200:
@@ -114,6 +131,7 @@ def update_files():
     elif status == 304:
         return True
     return False
+
 
 def make_backup():
     if not update_files() or not client_status.files:
@@ -133,6 +151,7 @@ def make_backup():
     kwargs['size'] = size
     api.set_backup_info('complete', **kwargs)
     return True
+
 
 def run():
     if not client_status.is_registered:
@@ -190,7 +209,9 @@ def run():
         
         actions = [Action(UPLOAD_PERIOD,
                           upload_fs,
-                          changelog),]
+                          changelog),
+                   Action(LOG_UPLOAD_PERIOD,
+                          upload_log)]
         
         backup_action = lambda: Action(backup.get_next(), make_backup)
         
@@ -220,6 +241,7 @@ def run():
             time.sleep(action.time_left())
             action()
 
+
 def stop():
     with open(PIDFILE_PATH, 'r') as f:
         pid = int(f.read().strip())
@@ -230,12 +252,15 @@ def stop():
     else:
         log.info('Stopping')
 
+
 def restart():
     stop()
     run()
 
+
 def usage():
     exit('Usage: %s start|stop|restart' % os.path.basename(sys.argv[0]))
+
 
 def main():
     if len(sys.argv) != 2:
@@ -247,6 +272,7 @@ def main():
     if not func:
         usage()
     func()
+
 
 if __name__ == '__main__':
     main()
