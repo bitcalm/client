@@ -23,7 +23,7 @@ from filesystem.base import FSEvent, FSNode
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
-UPLOAD_PERIOD = 1800
+FS_UPLOAD_PERIOD = 1800
 LOG_UPLOAD_PERIOD = 300
 SCHEDULE_UPDATE_PERIOD = 3600
 PIDFILE_PATH = '/tmp/bitcalm.pid'
@@ -207,7 +207,7 @@ def run():
         else:
             log.error('Getting S3 access failed')
         
-        actions = [Action(UPLOAD_PERIOD,
+        actions = [Action(FS_UPLOAD_PERIOD,
                           upload_fs,
                           changelog),
                    Action(LOG_UPLOAD_PERIOD,
@@ -247,7 +247,7 @@ def stop():
         pid = int(f.read().strip())
     try:
         os.kill(pid, signal.SIGTERM)
-    except OSError, e:
+    except OSError:
         print 'Failed to terminate %(pid)i: %(e)s' % vars()
     else:
         log.info('Stopping')
