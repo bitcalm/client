@@ -27,6 +27,7 @@ FS_UPLOAD_PERIOD = 1800
 LOG_UPLOAD_PERIOD = 300
 SCHEDULE_UPDATE_PERIOD = 3600
 PIDFILE_PATH = '/tmp/bitcalm.pid'
+CRASH_PATH = '/var/log/bitcalm.crash'
 
 
 class Action(object):
@@ -83,7 +84,8 @@ def on_stop(signum, frame):
     global notifier
     if notifier:
         notifier.stop()
-    raise SystemExit('Terminated process with pid %i' % os.getpid())
+    log.info('Terminated process with pid %i' % os.getpid())
+    raise SystemExit()
 
 
 def upload_fs(changelog):
@@ -164,8 +166,17 @@ def run():
         else:
             exit('Aborted')
 
+    crash = os.stat(CRASH_PATH)
+    if crash.st_size:
+        with open(CRASH_PATH) as f:
+            crash_info = f.read()
+        status = api.report_crash(crash_info, crash.st_mtime)
+        if status == 200:
+            log.info('Crash reported')
+
     context = DaemonContext(pidfile=PIDLockFile(PIDFILE_PATH),
-                            signal_map={signal.SIGTERM: on_stop})
+                            signal_map={signal.SIGTERM: on_stop},
+                            stderr=open(CRASH_PATH, 'w'))
     context.files_preserve = map(lambda h: h.stream,
                                  filter(lambda h: isinstance(h, FileHandler),
                                         log.logger.handlers))
@@ -249,8 +260,6 @@ def stop():
         os.kill(pid, signal.SIGTERM)
     except OSError:
         print 'Failed to terminate %(pid)i: %(e)s' % vars()
-    else:
-        log.info('Stopping')
 
 
 def restart():
@@ -268,9 +277,7 @@ def main():
     actions = {'start': run,
                'stop': stop,
                'restart': restart}
-    func = actions.get(sys.argv[1])
-    if not func:
-        usage()
+    func = actions.get(sys.argv[1], usage)
     func()
 
 

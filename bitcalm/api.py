@@ -113,5 +113,10 @@ class Api(object):
             c = int(c)
         return s, c
 
+    def report_crash(self, info, when):
+        return self._send('crash',
+                          data={'time': when},
+                          files={'info': zlib.compress(info, 9)})[0]
+
 
 api = Api(config.host, config.port, config.uuid, client_status.key)
