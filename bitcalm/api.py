@@ -112,6 +112,9 @@ class Api(object):
         if not backup_id and s == 200:
             c = int(c)
         return s, c
+    
+    def set_databases(self, databases):
+        return self._send('databases', data={'db': json.dumps(databases)})[0]
 
     def report_crash(self, info, when):
         return self._send('crash',

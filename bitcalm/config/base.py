@@ -5,14 +5,19 @@ from uuid import uuid1
 from .exceptions import ConfigEntryError, ConfigSyntaxError
 
 
+DB_RE = re.compile('^((?:[\.\w]+)|(?:(?:\d{1,3}\.){3}\d{1,3}))(?::(\d+))?;(\w+)(?:;(\w+))?$')
+
+
 class Config:
     DEFAULT_CONF = '/etc/bitcalm.conf'
     COMMENT_SYMBOL = '#'
     REQUIRED = ('uuid',)
-    ALLOWED = ('uuid', 'host', 'port')
-    VALIDATOR = {'uuid': re.compile('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')}
+    ALLOWED = ('uuid', 'host', 'port', 'database')
+    VALIDATOR = {'uuid': re.compile('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'),
+                 'database': DB_RE}
     ENTRY = {'host': {'default': 'bitcalm.com'},
-             'port': {'default': 443, 'type': int}}
+             'port': {'default': 443, 'type': int},
+             'database': {'multiple': True}}
     
     @staticmethod
     def validate(entry, value):
@@ -32,6 +37,11 @@ class Config:
         data = cls.ENTRY.get(entry)
         return data.get('type') if data else None
     
+    @classmethod
+    def is_multiple(cls, entry):
+        data = cls.ENTRY.get(entry)
+        return data and data.get('multiple', False)
+    
     def __init__(self, filename=DEFAULT_CONF):
         conf = self._parse_config(filename)
         for entry in Config.REQUIRED:
@@ -44,6 +54,13 @@ class Config:
                 value = conv_type(value)
             setattr(self, entry, value)
         self.filename = filename
+        for i, db in enumerate(self.database):
+            db = DB_RE.match(db)
+            db = {'host': db.group(1),
+                  'port': int(db.group(2) or 3306),
+                  'user': db.group(3),
+                  'passwd': db.group(4) or ''}
+            self.database[i] = db
     
     def _parse_config(self, filename):
         with open(filename, 'r') as f:
@@ -60,7 +77,12 @@ class Config:
             if not value:
                 raise ConfigSyntaxError('Invalid config syntax at line %i' % i)
             Config.validate(entry, value)
-            config[entry] = value
+            if Config.is_multiple(entry):
+                if not entry in config:
+                    config[entry] = []
+                config[entry].append(value)
+            else:
+                config[entry] = value
         return config
 
 

@@ -10,13 +10,14 @@ from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime, timedelta, date
 from logging import FileHandler
 
+import MySQLdb
 from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
                        IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
 import backup
 import log
-from config import status as client_status
+from config import config, status as client_status
 from api import api
 from filesystem.base import FSEvent, FSNode
 
@@ -217,6 +218,23 @@ def run():
             client_status.amazon = content
         else:
             log.error('Getting S3 access failed')
+        
+        if config.database:
+            log.info('Fetching list of databases')
+            databases = {}
+            for db in config.database:
+                conn = MySQLdb.connect(**db)
+                cur = conn.cursor()
+                cur.execute('SHOW databases')
+                db_names = [row[0] for row in cur.fetchall()]
+                cur.close()
+                databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
+            log.info('Upload list of databases')
+            status = api.set_databases(databases)
+            if status == 200:
+                log.info('List of databases uploaded')
+            else:
+                log.error('Error on upload list of databases. Status code is %i.' % status)
         
         actions = [Action(FS_UPLOAD_PERIOD,
                           upload_fs,
