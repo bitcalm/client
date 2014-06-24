@@ -6,7 +6,8 @@ from datetime import datetime, date, timedelta
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 
-from config import status
+from bitcalm.config import status
+from bitcalm import log
 
 
 TMP_FILEPATH = '/tmp/backup.tar.gz'
@@ -82,6 +83,12 @@ def next_date():
     return func() if func else None
 
 
+def get_bucket():
+    conn = S3Connection(status.amazon['key_id'],
+                        status.amazon['secret_key'])
+    return conn.get_bucket(status.amazon['bucket'])
+
+
 def compress(tmp_file=TMP_FILEPATH):
     with tarfile.open(tmp_file, 'w:gz') as tar:
         for path in status.files:
@@ -90,9 +97,7 @@ def compress(tmp_file=TMP_FILEPATH):
 
 
 def upload(filepath=TMP_FILEPATH, delete=True):
-    conn = S3Connection(status.amazon['key_id'],
-                        status.amazon['secret_key'])
-    bucket = conn.get_bucket(status.amazon['bucket'])
+    bucket = get_bucket()
     k = Key(bucket)
     k.key = os.path.basename(filepath)
     size = k.set_contents_from_filename(filepath, encrypt_key=True)
@@ -103,3 +108,51 @@ def upload(filepath=TMP_FILEPATH, delete=True):
 
 def backup(filepath=TMP_FILEPATH):
     return upload(compress(filepath))
+
+
+def restore(key, paths=None):
+    bucket = get_bucket()
+    k = bucket.lookup(key)
+    if not k:
+        log.error('There is no key "%s" in the bucket' % key)
+        return False
+
+    tmp = '/tmp/'
+    tmp_stats = os.statvfs(tmp)
+    available_space = tmp_stats.f_bavail * tmp_stats.f_frsize
+    if available_space < k.size:
+        log.error('Not enough available space in %s' % tmp)
+        return False
+
+    tmp_file = tmp + key
+    k.get_contents_to_filename(tmp_file)
+    tar = tarfile.open(tmp_file, 'r:gz')
+    if paths:
+        def contains(path, member):
+            path, member = map(lambda p: filter(None, p.split('/')),
+                               (path, member.name))
+            if len(path) > len(member):
+                return False
+            for p_node, m_node in zip(path, member):
+                if p_node != m_node:
+                    return False
+            return True
+
+        def contained(member, paths):
+            for path in paths:
+                if contains(path, member):
+                    return True
+            return False
+
+        members = filter(lambda m, paths=paths: contained(m, paths),
+                         tar.getmembers())
+        if not members:
+            log.error('Paths not found in the backup')
+            os.remove(tmp_file)
+            return False
+    else:
+        members = None
+    tar.extractall(path='/', members=members)
+    tar.close()
+    os.remove(tmp_file)
+    return True
