@@ -114,15 +114,13 @@ def restore(key, paths=None):
     bucket = get_bucket()
     k = bucket.lookup(key)
     if not k:
-        log.error('There is no key "%s" in the bucket' % key)
-        return False
+        return 'There is no key "%s" in the bucket' % key
 
     tmp = '/tmp/'
     tmp_stats = os.statvfs(tmp)
     available_space = tmp_stats.f_bavail * tmp_stats.f_frsize
     if available_space < k.size:
-        log.error('Not enough available space in %s' % tmp)
-        return False
+        return 'Not enough available space in %s' % tmp
 
     tmp_file = tmp + key
     k.get_contents_to_filename(tmp_file)
@@ -147,12 +145,11 @@ def restore(key, paths=None):
         members = filter(lambda m, paths=paths: contained(m, paths),
                          tar.getmembers())
         if not members:
-            log.error('Paths not found in the backup')
             os.remove(tmp_file)
-            return False
+            return 'Paths not found in the backup'
     else:
         members = None
     tar.extractall(path='/', members=members)
     tar.close()
     os.remove(tmp_file)
-    return True
+    return None

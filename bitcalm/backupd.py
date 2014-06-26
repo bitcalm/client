@@ -27,6 +27,7 @@ IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
 FS_UPLOAD_PERIOD = 1800
 LOG_UPLOAD_PERIOD = 300
 SCHEDULE_UPDATE_PERIOD = 3600
+RESTORE_CHECK_PERIOD = 600
 PIDFILE_PATH = '/tmp/bitcalm.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
@@ -136,6 +137,21 @@ def update_files():
     return False
 
 
+def restore():
+    status, key = api.check_restore()
+    if status == 200:
+        if key:
+            error = backup.restore(key)
+            if error:
+                log.error(error)
+            else:
+                log.info('Backup restored.')
+                api.restore_complete()
+        return True
+    else:
+        return False
+
+
 def make_backup():
     if not update_files() or not client_status.files:
         return False
@@ -240,7 +256,9 @@ def run():
                           upload_fs,
                           changelog),
                    Action(LOG_UPLOAD_PERIOD,
-                          upload_log)]
+                          upload_log),
+                   Action(RESTORE_CHECK_PERIOD,
+                          restore)]
         
         backup_action = lambda: Action(backup.get_next(), make_backup)
         

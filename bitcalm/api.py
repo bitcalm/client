@@ -120,6 +120,15 @@ class Api(object):
         return self._send('crash',
                           data={'time': when},
                           files={'info': zlib.compress(info, 9)})[0]
+    
+    def check_restore(self):
+        status, content = self._send('backup/restore', method='GET')
+        if status == 200 and content:
+            content = json.loads(content)['key']
+        return status, content
+    
+    def restore_complete(self):
+        return self._send('backup/restore/complete')[0]
 
 
 api = Api(config.host, config.port, config.uuid, client_status.key)
