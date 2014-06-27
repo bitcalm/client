@@ -104,7 +104,7 @@ class Api(object):
     
     def set_backup_info(self, status, **kwargs):
         backup_id = kwargs.pop('backup_id', None)
-        allowed = ('time', 'size', 'keyname')
+        allowed = ('time', 'size', 'keyname', 'files')
         data = {k: v for k, v in kwargs.iteritems() if k in allowed}
         if backup_id:
             data['id'] = backup_id

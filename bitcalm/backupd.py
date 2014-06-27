@@ -155,7 +155,9 @@ def restore():
 def make_backup():
     if not update_files() or not client_status.files:
         return False
-    status, backup_id = api.set_backup_info('compress', time=time.time())
+    status, backup_id = api.set_backup_info('compress',
+                                            time=time.time(),
+                                            files='\n'.join(client_status.files))
     if not status == 200:
         return False
     tmp = '/tmp/backup_%s.tar.gz' % datetime.now().strftime('%Y.%m.%d_%H%M')
