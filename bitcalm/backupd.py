@@ -138,15 +138,22 @@ def update_files():
 
 
 def restore():
-    status, key = api.check_restore()
+    status, content = api.check_restore()
     if status == 200:
-        if key:
-            error = backup.restore(key)
-            if error:
-                log.error(error)
+        if content:
+            log.info('Start backup restore.')
+            complete = []
+            for item in content:
+                error = backup.restore(item['key'], paths=item.get('items'))
+                if error:
+                    log.error(error)
+                    break
+                else:
+                    complete.append(item['id'])
             else:
-                log.info('Backup restored.')
-                api.restore_complete()
+                log.info('All restore tasks are complete.')
+            if complete:
+                api.restore_complete(complete)
         return True
     else:
         return False

@@ -124,11 +124,12 @@ class Api(object):
     def check_restore(self):
         status, content = self._send('backup/restore', method='GET')
         if status == 200 and content:
-            content = json.loads(content)['key']
+            content = json.loads(content)
         return status, content
-    
-    def restore_complete(self):
-        return self._send('backup/restore/complete')[0]
+
+    def restore_complete(self, tasks):
+        return self._send('backup/restore/complete',
+                          data={'tasks': ','.join(map(str, tasks))})[0]
 
 
 api = Api(config.host, config.port, config.uuid, client_status.key)
