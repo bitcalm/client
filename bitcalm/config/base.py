@@ -17,7 +17,7 @@ class Config:
                  'database': DB_RE}
     ENTRY = {'host': {'default': 'bitcalm.com'},
              'port': {'default': 443, 'type': int},
-             'database': {'multiple': True}}
+             'database': {'default': [], 'multiple': True}}
     
     @staticmethod
     def validate(entry, value):
@@ -54,13 +54,14 @@ class Config:
                 value = conv_type(value)
             setattr(self, entry, value)
         self.filename = filename
-        for i, db in enumerate(self.database):
-            db = DB_RE.match(db)
-            db = {'host': db.group(1),
-                  'port': int(db.group(2) or 3306),
-                  'user': db.group(3),
-                  'passwd': db.group(4) or ''}
-            self.database[i] = db
+        if self.database:
+            for i, db in enumerate(self.database):
+                db = DB_RE.match(db)
+                db = {'host': db.group(1),
+                      'port': int(db.group(2) or 3306),
+                      'user': db.group(3),
+                      'passwd': db.group(4) or ''}
+                self.database[i] = db
     
     def _parse_config(self, filename):
         with open(filename, 'r') as f:
