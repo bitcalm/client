@@ -192,13 +192,15 @@ def run():
         else:
             exit('Aborted')
 
-    crash = os.stat(CRASH_PATH)
-    if crash.st_size:
-        with open(CRASH_PATH) as f:
-            crash_info = f.read()
-        status = api.report_crash(crash_info, crash.st_mtime)
-        if status == 200:
-            log.info('Crash reported')
+    if os.path.exists(CRASH_PATH):
+        crash = os.stat(CRASH_PATH)
+        if crash.st_size:
+            with open(CRASH_PATH) as f:
+                crash_info = f.read()
+            status = api.report_crash(crash_info, crash.st_mtime)
+            if status == 200:
+                log.info('Crash reported')
+                os.remove(CRASH_PATH)
 
     context = DaemonContext(pidfile=PIDLockFile(PIDFILE_PATH),
                             signal_map={signal.SIGTERM: on_stop},
