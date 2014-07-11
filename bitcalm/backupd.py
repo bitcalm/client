@@ -50,7 +50,7 @@ class Action(object):
     
     def __call__(self):
         log.info('Perform action: %s' % self._func)
-        self.lastexectime = datetime.now()
+        self.lastexectime = datetime.utcnow()
         if self._func(*self._args, **self._kwargs):
             self.next()
             log.info('Action %s complete' % self._func)
@@ -62,19 +62,19 @@ class Action(object):
         return cmp(self.time, other.time)
     
     def _default_next(self):
-        return (self.lastexectime or datetime.now()) \
+        return (self.lastexectime or datetime.utcnow()) \
             + timedelta(seconds=self._period)
     
     def next(self):
         self.time = self._next()
     
     def delay(self, period=600):
-        self.time = datetime.now() + timedelta(seconds=period)
+        self.time = datetime.utcnow() + timedelta(seconds=period)
     
     def time_left(self):
-        now = datetime.now()
+        now = datetime.utcnow()
         if self.time > now:
-            return (self.time - now).seconds
+            return (self.time - now).total_seconds()
         return 0
 
 
@@ -166,7 +166,7 @@ def make_backup():
                                             files='\n'.join(client_status.files))
     if not status == 200:
         return False
-    tmp = '/tmp/backup_%s.tar.gz' % datetime.now().strftime('%Y.%m.%d_%H%M')
+    tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
     backup.compress(tmp)
     kwargs = {'backup_id': backup_id}
     api.set_backup_info('upload', **kwargs)

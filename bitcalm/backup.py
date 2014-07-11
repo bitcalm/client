@@ -7,7 +7,6 @@ from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 
 from bitcalm.config import status
-from bitcalm import log
 
 
 TMP_FILEPATH = '/tmp/backup.tar.gz'
@@ -24,7 +23,7 @@ def next_daily():
     if not period:
         return None
     if not status.prev_backup:
-        return datetime.now()
+        return datetime.utcnow()
     prev_date = date(*map(int, status.prev_backup.split('.')))
     next_date = prev_date + timedelta(days=period)
     return datetime(next_date.year,
