@@ -161,6 +161,15 @@ def restore():
 def make_backup():
     if not update_files() or not client_status.files:
         return False
+    if not client_status.amazon:
+        status, content = api.get_s3_access()
+        if status == 200:
+            client_status.amazon = content
+            client_status.save()
+        else:
+            log.error('Getting S3 access failed')
+            return False
+
     status, backup_id = api.set_backup_info('compress',
                                             time=time.time(),
                                             files='\n'.join(client_status.files))
@@ -238,12 +247,6 @@ def run():
             if item in IGNORE_PATHS or os.path.islink(path):
                 continue
             wm.add_watch(path, mask, rec=True)
-        
-        status, content = api.get_s3_access()
-        if status == 200:
-            client_status.amazon = content
-        else:
-            log.error('Getting S3 access failed')
         
         actions = [Action(FS_UPLOAD_PERIOD,
                           upload_fs,
