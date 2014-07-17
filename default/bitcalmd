@@ -1,0 +1,46 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          bitcalm_daemon
+# Required-Start:
+# Required-Stop:
+# Default-Start:     3 4 5
+# Default-Stop:      0 1 2 6
+# Short-Description: Bitcalm backup daemon
+# Description:       Bitcalm backup daemon
+### END INIT INFO
+
+. /lib/lsb/init-functions
+NAME=bitcalmd
+DAEMON=/usr/local/bin/bitcalm
+PIDFILE=/tmp/bitcalm.pid
+PATH=/usr/local/bin
+
+test -x $DAEMON || exit 5
+
+case $1 in
+ start)
+  if [ -e $PIDFILE ]; then
+   status_of_proc -p $PIDFILE $DAEMON "$NAME process" && status="0" || status="$?"
+   if [ $status = "0" ]; then
+    exit
+   fi
+  fi
+  log_daemon_msg "Starting the process" "$NAME"
+  bitcalm start
+  ;;
+ stop)
+  if [ -e $PIDFILE ]; then
+   bitcalm stop
+  else
+   log_daemon_msg "$NAME process is not running"
+   log_end_msg 0
+  fi
+  ;;
+ restart)
+  $0 stop && sleep 2 && $0 start
+  ;;
+ *)
+  echo "Usage: $0 {start|stop|restart}"
+  exit 2
+  ;;
+esac

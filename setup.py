@@ -13,5 +13,6 @@ setup(name = 'bitcalm',
       install_requires = install_requires,
       entry_points = {'console_scripts': ['bitcalm = bitcalm.backupd:main',]},
       data_files = [('/etc', ['default/bitcalm.conf',]),
-                    ('/var/lib/bitcalm', ['default/data',])]
+                    ('/var/lib/bitcalm', ['default/data',]),
+                    ('/etc/init.d', ['default/bitcalmd',])]
       )
