@@ -1,4 +1,4 @@
-#!/bin/sh
+#! /bin/sh
 ### BEGIN INIT INFO
 # Provides:          bitcalm_daemon
 # Required-Start:
@@ -9,38 +9,84 @@
 # Description:       Bitcalm backup daemon
 ### END INIT INFO
 
-. /lib/lsb/init-functions
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
+DESC="Bitcalm backup service"
 NAME=bitcalmd
 DAEMON=/usr/local/bin/bitcalm
 PIDFILE=/tmp/bitcalm.pid
-PATH=/usr/local/bin
+SCRIPTNAME=/etc/init.d/$NAME
 
-test -x $DAEMON || exit 5
+[ -x "$DAEMON" ] || exit 0
 
-case $1 in
- start)
-  if [ -e $PIDFILE ]; then
-   status_of_proc -p $PIDFILE $DAEMON "$NAME process" && status="0" || status="$?"
-   if [ $status = "0" ]; then
-    exit
-   fi
-  fi
-  log_daemon_msg "Starting the process" "$NAME"
-  bitcalm start
-  ;;
- stop)
-  if [ -e $PIDFILE ]; then
-   bitcalm stop
-  else
-   log_daemon_msg "$NAME process is not running"
-   log_end_msg 0
-  fi
-  ;;
- restart)
-  $0 stop && sleep 2 && $0 start
-  ;;
- *)
-  echo "Usage: $0 {start|stop|restart}"
-  exit 2
-  ;;
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+
+. /lib/init/vars.sh
+
+. /lib/lsb/init-functions
+
+do_start()
+{
+	if [ -e $PIDFILE ]; then
+		status_of_proc -p $PIDFILE $DAEMON "$NAME process" && status="0" || status="$?"
+		if [ $status = "0" ]; then
+			return 1
+		fi
+	fi
+	log_daemon_msg "Starting the process" "$NAME"
+	bitcalm start && return 0 || return 2
+}
+
+do_stop()
+{
+	if [ -e $PIDFILE ]; then
+		bitcalm stop && return 0 || return 2
+	else
+		return 1
+	fi
+}
+
+case "$1" in
+  start)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+	do_start
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  stop)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
+	do_stop
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  status)
+	status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+	;;
+  restart|force-reload)
+	log_daemon_msg "Restarting $DESC" "$NAME"
+	do_stop
+	case "$?" in
+	  0|1)
+		do_start
+		case "$?" in
+			0) log_end_msg 0 ;;
+			1) log_end_msg 1 ;; # Old process is still running
+			*) log_end_msg 1 ;; # Failed to start
+		esac
+		;;
+	  *)
+		# Failed to stop
+		log_end_msg 1
+		;;
+	esac
+	;;
+  *)
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
+	exit 3
+	;;
 esac
+
+:
