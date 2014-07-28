@@ -290,7 +290,7 @@ def stop():
         pid = int(f.read().strip())
     try:
         os.kill(pid, signal.SIGTERM)
-    except OSError:
+    except OSError, e:
         print 'Failed to terminate %(pid)i: %(e)s' % vars()
 
 
