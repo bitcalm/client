@@ -27,7 +27,7 @@ FS_UPLOAD_PERIOD = 1800
 LOG_UPLOAD_PERIOD = 300
 SCHEDULE_UPDATE_PERIOD = 3600
 RESTORE_CHECK_PERIOD = 600
-PIDFILE_PATH = '/tmp/bitcalm.pid'
+PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
 
