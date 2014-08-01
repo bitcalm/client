@@ -9,6 +9,7 @@ from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime, timedelta, date
 from logging import FileHandler
+from threading import Thread
 
 from daemon import DaemonContext
 from pyinotify import (WatchManager, ThreadedNotifier, 
@@ -79,6 +80,7 @@ class Action(object):
 
 
 notifier = None
+changelog = None
 
 
 def on_stop(signum, frame):
@@ -189,6 +191,98 @@ def make_backup():
     return True
 
 
+def immortal(func):
+    def inner():
+        def restart():
+            t = Thread(target=func)
+            t.setDaemon(True)
+            t.start()
+            return t
+        t = restart()
+        while True:
+            t.join(2**31)
+            if not t.is_alive():
+                log.error('Unhandled exception, restarting')
+                t = restart()
+    return inner
+
+@immortal
+def work():
+    if os.path.exists(CRASH_PATH):
+        crash = os.stat(CRASH_PATH)
+        if crash.st_size:
+            with open(CRASH_PATH) as f:
+                crash_info = f.read()
+            status = api.report_crash(crash_info, crash.st_mtime)
+            if status == 200:
+                log.info('Crash reported')
+                os.remove(CRASH_PATH)
+
+    log.info('Build filesystem image')
+    basepath = '/'
+    root = FSNode(basepath, ignore=IGNORE_PATHS)
+    root_d = root.as_dict()
+    root_str = json.dumps(root_d)
+    h = sha(root_str).hexdigest()
+    if not client_status.fshash or client_status.fshash != h:
+        status = api.set_fs(root_str)[0]
+        if status == 200:
+            client_status.fshash = h
+            client_status.save()
+            log.info('Filesystem image updated')
+        else:
+            log.error('Filesystem image update failed')
+    
+    global changelog
+    global notifier
+    if not notifier:
+        log.info('Create watch manager')
+        wm = WatchManager()
+        changelog = []
+        notifier = ThreadedNotifier(wm, FSEvent(changelog=changelog))
+        notifier.setDaemon(True)
+        notifier.start()
+        mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
+        log.info('Start watching filesystem changes')
+        for item in os.listdir(basepath):
+            path = os.path.join(basepath, item)
+            if item in IGNORE_PATHS or os.path.islink(path):
+                continue
+            wm.add_watch(path, mask, rec=True)
+
+    actions = [Action(FS_UPLOAD_PERIOD, upload_fs, changelog),
+               Action(LOG_UPLOAD_PERIOD, upload_log),
+               Action(RESTORE_CHECK_PERIOD, restore)]
+
+    backup_action = lambda: Action(backup.get_next(), make_backup)
+
+    def on_schedule_update(actions=actions):
+        actions[-1] = backup_action()
+
+    update_schedule_action = lambda: Action(SCHEDULE_UPDATE_PERIOD,
+                                            update_schedule,
+                                            on_update=on_schedule_update)
+
+    if update_schedule() or client_status.schedule:
+        actions.append(update_schedule_action())
+        actions.append(backup_action())
+    else:
+        def on_schedule_download(actions=actions):
+            actions[-1] = update_schedule_action()
+            actions.append(backup_action())
+        actions.append(Action(SCHEDULE_UPDATE_PERIOD,
+                              update_schedule,
+                              on_update=on_schedule_download,
+                              on_404=True))
+
+    log.info('Start main loop')
+    while True:
+        action = min(actions)
+        log.info('Next action is %s' % action)
+        time.sleep(action.time_left())
+        action()
+
+
 def run():
     if not client_status.is_registered:
         print 'Sending info about new client...'
@@ -200,16 +294,6 @@ def run():
         else:
             exit('Aborted')
 
-    if os.path.exists(CRASH_PATH):
-        crash = os.stat(CRASH_PATH)
-        if crash.st_size:
-            with open(CRASH_PATH) as f:
-                crash_info = f.read()
-            status = api.report_crash(crash_info, crash.st_mtime)
-            if status == 200:
-                log.info('Crash reported')
-                os.remove(CRASH_PATH)
-
     context = DaemonContext(pidfile=PIDLockFile(PIDFILE_PATH),
                             signal_map={signal.SIGTERM: on_stop},
                             stderr=open(CRASH_PATH, 'w'))
@@ -219,70 +303,7 @@ def run():
     print 'Starting daemon'
     with context:
         log.info('Daemon started')
-        log.info('Build filesystem image')
-        basepath = '/'
-        root = FSNode(basepath, ignore=IGNORE_PATHS)
-        root_d = root.as_dict()
-        root_str = json.dumps(root_d)
-        h = sha(root_str).hexdigest()
-        if not client_status.fshash or client_status.fshash != h:
-            status, content = api.set_fs(root_str)
-            if status == 200:
-                client_status.fshash = h
-                client_status.save()
-                log.info('Filesystem image updated')
-            else:
-                log.error('Filesystem image update failed')
-
-        log.info('Create watch manager')
-        wm = WatchManager()
-        changelog = []
-        global notifier
-        notifier = ThreadedNotifier(wm, FSEvent(changelog=changelog))
-        notifier.start()
-        mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
-        log.info('Start watching filesystem changes')
-        for item in os.listdir(basepath):
-            path = os.path.join(basepath, item)
-            if item in IGNORE_PATHS or os.path.islink(path):
-                continue
-            wm.add_watch(path, mask, rec=True)
-        
-        actions = [Action(FS_UPLOAD_PERIOD,
-                          upload_fs,
-                          changelog),
-                   Action(LOG_UPLOAD_PERIOD,
-                          upload_log),
-                   Action(RESTORE_CHECK_PERIOD,
-                          restore)]
-        
-        backup_action = lambda: Action(backup.get_next(), make_backup)
-        
-        def on_schedule_update(actions=actions):
-            actions[-1] = backup_action()
-        
-        update_schedule_action = lambda: Action(SCHEDULE_UPDATE_PERIOD,
-                                                update_schedule,
-                                                on_update=on_schedule_update)
-
-        if update_schedule() or client_status.schedule:
-            actions.append(update_schedule_action())
-            actions.append(backup_action())
-        else:
-            def on_schedule_download(actions=actions):
-                actions[-1] = update_schedule_action()
-                actions.append(backup_action())
-            actions.append(Action(SCHEDULE_UPDATE_PERIOD,
-                                  update_schedule,
-                                  on_update=on_schedule_download,
-                                  on_404=True))
-        
-        log.info('Start main loop')
-        while True:
-            action = min(actions)
-            log.info('Next action is %s' % action)
-            time.sleep(action.time_left())
-            action()
+        work()
 
 
 def stop():
