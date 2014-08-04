@@ -325,6 +325,8 @@ def usage():
 
 
 def main():
+    if sys.version_info < (2, 7):
+        exit('Please upgrade your python to 2.7 or newer')
     if len(sys.argv) != 2:
         usage()
     actions = {'start': run,
