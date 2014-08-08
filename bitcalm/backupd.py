@@ -2,7 +2,7 @@
 import os
 import sys
 import signal
-import json
+import pickle
 import time
 import platform
 from hashlib import sha256 as sha
@@ -221,18 +221,18 @@ def work():
     log.info('Build filesystem image')
     basepath = '/'
     root = FSNode(basepath, ignore=IGNORE_PATHS)
-    root_d = root.as_dict()
-    root_str = json.dumps(root_d)
-    h = sha(root_str).hexdigest()
+    root_dict = root.as_dict()
+    root_dump = pickle.dumps(root_dict)
+    h = sha(root_dump).hexdigest()
     if not client_status.fshash or client_status.fshash != h:
-        status = api.set_fs(root_str)[0]
+        status = api.set_fs(root_dump)[0]
         if status == 200:
             client_status.fshash = h
             client_status.save()
             log.info('Filesystem image updated')
         else:
             log.error('Filesystem image update failed')
-    
+
     global changelog
     global notifier
     if not notifier:
