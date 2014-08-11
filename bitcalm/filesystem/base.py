@@ -1,6 +1,7 @@
 import os
 
-from pyinotify import ProcessEvent
+from pyinotify import (ProcessEvent, ThreadedNotifier, WatchManager,
+                       IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
 
 class FSNode(object):
@@ -113,3 +114,29 @@ class FSEvent(ProcessEvent):
     
     process_IN_MOVED_TO = process_IN_CREATE
     process_IN_MOVED_FROM = process_IN_DELETE
+
+
+class Watcher(object):
+    def __init__(self, paths=None):
+        self.changelog = []
+        self.watch_manager = WatchManager()
+        self.notifier = ThreadedNotifier(self.watch_manager,
+                                         FSEvent(changelog=self.changelog))
+        self.notifier.setDaemon(True)
+        self.mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
+        if paths:
+            self.set_paths(paths)
+    
+    def set_paths(self, paths):
+        if self.watch_manager.watches:
+            self.watch_manager.rm_watch(self.watch_manager.watches.keys(),
+                                        rec=True)
+        for path in paths:
+            self.watch_manager.add_watch(path, self.mask, rec=True)
+    
+    def start(self):
+        self.notifier.start()
+    
+    def stop(self):
+        self.watch_manager.close()
+        self.notifier.stop()

@@ -12,22 +12,25 @@ from logging import FileHandler
 from threading import Thread
 
 from daemon import DaemonContext
-from pyinotify import (WatchManager, ThreadedNotifier, 
-                       IN_CREATE, IN_DELETE, IN_MOVED_FROM, IN_MOVED_TO)
 
 import backup
 import log
 from config import status as client_status
 from api import api
-from filesystem.base import FSEvent, FSNode
+from filesystem.base import FSNode, Watcher
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
-FS_UPLOAD_PERIOD = 1800
-LOG_UPLOAD_PERIOD = 300
-SCHEDULE_UPDATE_PERIOD = 3600
-RESTORE_CHECK_PERIOD = 600
+
+MIN = 60
+HOUR = 60 * MIN
+
+FS_UPLOAD_PERIOD = 30 * MIN
+FS_SET_PERIOD = 24 * HOUR
+LOG_UPLOAD_PERIOD = 5 * MIN
+SCHEDULE_UPDATE_PERIOD = HOUR
+RESTORE_CHECK_PERIOD = 10 * MIN
 PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
@@ -79,16 +82,35 @@ class Action(object):
         return 0
 
 
-notifier = None
-changelog = None
+fs_watcher = None
 
 
 def on_stop(signum, frame):
-    global notifier
-    if notifier:
-        notifier.stop()
+    if fs_watcher:
+        fs_watcher.stop()
     log.info('Terminated process with pid %i' % os.getpid())
     raise SystemExit()
+
+
+def set_fs():
+    log.info('Update filesystem image')
+    basepath = '/'
+    root = FSNode(basepath, ignore=IGNORE_PATHS)
+    root_dict = root.as_dict()
+    root_dump = pickle.dumps(root_dict)
+    h = sha(root_dump).hexdigest()
+    if not client_status.fshash or client_status.fshash != h:
+        status = api.set_fs(root_dump)[0]
+        if status == 200:
+            client_status.fshash = h
+            client_status.save()
+            log.info('Filesystem image updated')
+            return True
+        else:
+            log.error('Filesystem image update failed')
+            return False
+    log.info('Filesystem has not changed')
+    return True
 
 
 def upload_fs(changelog):
@@ -127,15 +149,24 @@ def update_schedule(on_update=None, on_404=False):
 
 
 def update_files():
+    """ Returns:
+            0 if update failed;
+            1 if files are updated;
+            2 if files not changed.
+    """
     status, content = api.get_files()
     if status == 200:
         client_status.files_hash = sha(content).hexdigest()
         client_status.files = content.split('\n')
         client_status.save()
-        return True
+        fs_watcher.set_paths(client_status.files)
+        if not fs_watcher.notifier.is_alive():
+            log.info('Start watching filesystem')
+            fs_watcher.start()
+        return 1
     elif status == 304:
-        return True
-    return False
+        return 2
+    return 0
 
 
 def restore():
@@ -218,41 +249,23 @@ def work():
                 log.info('Crash reported')
                 os.remove(CRASH_PATH)
 
-    log.info('Build filesystem image')
-    basepath = '/'
-    root = FSNode(basepath, ignore=IGNORE_PATHS)
-    root_dict = root.as_dict()
-    root_dump = pickle.dumps(root_dict)
-    h = sha(root_dump).hexdigest()
-    if not client_status.fshash or client_status.fshash != h:
-        status = api.set_fs(root_dump)[0]
-        if status == 200:
-            client_status.fshash = h
-            client_status.save()
-            log.info('Filesystem image updated')
-        else:
-            log.error('Filesystem image update failed')
-
-    global changelog
-    global notifier
-    if not notifier:
+    set_fs()
+    
+    global fs_watcher
+    if not fs_watcher:
         log.info('Create watch manager')
-        wm = WatchManager()
-        changelog = []
-        notifier = ThreadedNotifier(wm, FSEvent(changelog=changelog))
-        notifier.setDaemon(True)
-        notifier.start()
-        mask = IN_CREATE|IN_DELETE|IN_MOVED_FROM|IN_MOVED_TO
-        log.info('Start watching filesystem changes')
-        for item in os.listdir(basepath):
-            path = os.path.join(basepath, item)
-            if item in IGNORE_PATHS or os.path.islink(path):
-                continue
-            wm.add_watch(path, mask, rec=True)
+        fs_watcher = Watcher()
+    
+    if update_files() == 2 and client_status.files:
+        fs_watcher.set_paths(client_status.files)
+        if not fs_watcher.notifier.is_alive():
+            log.info('Start watching filesystem')
+            fs_watcher.start()
 
-    actions = [Action(FS_UPLOAD_PERIOD, upload_fs, changelog),
+    actions = [Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
                Action(LOG_UPLOAD_PERIOD, upload_log),
-               Action(RESTORE_CHECK_PERIOD, restore)]
+               Action(RESTORE_CHECK_PERIOD, restore),
+               Action(FS_SET_PERIOD, set_fs)]
 
     backup_action = lambda: Action(backup.get_next(), make_backup)
 
