@@ -18,7 +18,7 @@ import log
 from config import status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
-from actions import ActionPool, OneTimeAction, Action
+from actions import ActionPool, OneTimeAction, Action, ActionSeed
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -295,11 +295,11 @@ def work():
         b = actions.get(make_backup)
         if b:
             b.next()
-    
-    followers = [Action(backup.next_date, make_backup),
-                 Action(SCHEDULE_UPDATE_PERIOD,
-                        update_schedule,
-                        on_update=on_schedule_update)]
+
+    followers = [ActionSeed(backup.next_date, make_backup),
+                 ActionSeed(SCHEDULE_UPDATE_PERIOD,
+                            update_schedule,
+                            on_update=on_schedule_update)]
     if update_schedule() or client_status.schedule:
         actions.extend(followers)
     else:

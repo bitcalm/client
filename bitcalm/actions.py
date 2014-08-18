@@ -109,6 +109,11 @@ class OneTimeAction(Action):
             if self.pool:
                 self.pool.remove(self)
                 if self._followers:
+                    def grow(a):
+                        if isinstance(a, ActionSeed):
+                            return a.grow()
+                        return a
+                    self._followers = map(grow, self._followers)
                     self.pool.extend(self._followers)
                 for follower in self._followers:
                     follower.next()
@@ -116,3 +121,13 @@ class OneTimeAction(Action):
         else:
             self.next()
             log.error('Action %s failed' % self._func)
+
+
+class ActionSeed(object):
+    def __init__(self, *args, **kwargs):
+        self.cls = kwargs.pop('cls', Action)
+        self.args = args
+        self.kwargs = kwargs
+    
+    def grow(self):
+        return self.cls(*self.args, **self.kwargs)

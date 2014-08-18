@@ -71,6 +71,8 @@ def next_monthly():
 
 
 def get_next():
+    if not status.schedule:
+        return None
     for key in SCHEDULE.TYPES:
         if key in status.schedule:
             func = {SCHEDULE.DAILY: next_daily,
