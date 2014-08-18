@@ -132,9 +132,7 @@ def restore(key, paths=None):
         return 'There is no key "%s" in the bucket' % key
 
     tmp = '/tmp/'
-    tmp_stats = os.statvfs(tmp)
-    available_space = tmp_stats.f_bavail * tmp_stats.f_frsize
-    if available_space < k.size:
+    if available_space() < k.size:
         return 'Not enough available space in %s' % tmp
 
     tmp_file = tmp + key
@@ -168,3 +166,8 @@ def restore(key, paths=None):
     tar.close()
     os.remove(tmp_file)
     return None
+
+
+def available_space(path='/tmp/'):
+    stats = os.statvfs(path)
+    return stats.f_bavail * stats.f_frsize

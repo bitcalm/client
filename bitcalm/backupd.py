@@ -7,7 +7,7 @@ import time
 import platform
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
-from datetime import datetime, timedelta, date
+from datetime import datetime, date
 from logging import FileHandler
 from threading import Thread
 
@@ -18,6 +18,7 @@ import log
 from config import status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
+from actions import ActionPool, OneTimeAction, Action
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -35,54 +36,8 @@ PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
 
-class Action(object):
-    def __init__(self, nexttime, func, *args, **kwargs):
-        self.lastexectime = None
-        self._func = func
-        if callable(nexttime):
-            self._period = 0
-            self._next = nexttime
-        else:
-            self._period = nexttime
-            self._next = self._default_next
-        self.next()
-        self._args = args
-        self._kwargs = kwargs
-    
-    def __str__(self):
-        return '%s at %s' % (self._func, self.time)
-    
-    def __call__(self):
-        log.info('Perform action: %s' % self._func)
-        self.lastexectime = datetime.utcnow()
-        if self._func(*self._args, **self._kwargs):
-            self.next()
-            log.info('Action %s complete' % self._func)
-        else:
-            self.delay()
-            log.error('Action %s failed' % self._func)
-    
-    def __cmp__(self, other):
-        return cmp(self.time, other.time)
-    
-    def _default_next(self):
-        return (self.lastexectime or datetime.utcnow()) \
-            + timedelta(seconds=self._period)
-    
-    def next(self):
-        self.time = self._next()
-    
-    def delay(self, period=600):
-        self.time = datetime.utcnow() + timedelta(seconds=period)
-    
-    def time_left(self):
-        now = datetime.utcnow()
-        if self.time > now:
-            return (self.time - now).total_seconds()
-        return 0
-
-
 fs_watcher = None
+actions = ActionPool()
 
 
 def on_stop(signum, frame):
@@ -163,6 +118,11 @@ def update_files():
         if not fs_watcher.notifier.is_alive():
             log.info('Start watching filesystem')
             fs_watcher.start()
+        if not actions.get(make_backup):
+            actions.add(Action(backup.next_date, make_backup))
+            a = actions.get('check_free_space')
+            if a:
+                actions.remove(a)
         return 1
     elif status == 304:
         return 2
@@ -192,14 +152,28 @@ def restore():
 
 
 def compress_backup():
-    backup.compress(client_status.backup['path'])
+    try:
+        backup.compress(client_status.backup['path'])
+    except IOError:
+        log.error('There is not enough free space on device')
+        os.remove(client_status.backup['path'])
+        space=backup.available_space()
+        backup_action = actions.get(make_backup)
+        actions.remove(backup_action)
+        actions.add(OneTimeAction(nexttime=30*MIN,
+                                  func=lambda: backup.available_space() > space,
+                                  tag='check_free_space',
+                                  followers=[backup_action]))
+        return False
     client_status.backup['status'] = 'compressed'
     client_status.save()
+    return True
 
 def prepare_backup_upload():
     api.set_backup_info('upload', backup_id=client_status.backup['backup_id'])
     client_status.backup['status'] = 'upload'
     client_status.save()
+    return True
 
 def upload_backup():
     key, size = backup.upload(client_status.backup['path'])
@@ -208,6 +182,7 @@ def upload_backup():
     client_status.backup['keyname'] = key
     client_status.backup['size'] = size
     client_status.save()
+    return True
 
 def complete_backup():
     del client_status.backup['status']
@@ -216,6 +191,7 @@ def complete_backup():
     client_status.backup = None
     client_status.prev_backup = date.today().strftime('%Y.%m.%d')
     client_status.save()
+    return True
 
 def make_backup():
     steps = [compress_backup,
@@ -252,7 +228,8 @@ def make_backup():
                                                   'uploaded'))}
         steps = steps[status_map.get(bstatus):]
     for step in steps:
-        step()
+        if not step():
+            return False
     return True
 
 
@@ -309,35 +286,29 @@ def work():
             log.info('Start watching filesystem')
             fs_watcher.start()
 
-    actions = [Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
-               Action(LOG_UPLOAD_PERIOD, upload_log),
-               Action(RESTORE_CHECK_PERIOD, restore),
-               Action(FS_SET_PERIOD, set_fs)]
+    actions.extend([Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
+                    Action(LOG_UPLOAD_PERIOD, upload_log),
+                    Action(RESTORE_CHECK_PERIOD, restore),
+                    Action(FS_SET_PERIOD, set_fs)])
 
-    backup_action = lambda: Action(backup.get_next(), make_backup)
-
-    def on_schedule_update(actions=actions):
-        actions[-1] = backup_action()
-
-    update_schedule_action = lambda: Action(SCHEDULE_UPDATE_PERIOD,
-                                            update_schedule,
-                                            on_update=on_schedule_update)
-
+    def on_schedule_update():
+        b = actions.get(make_backup)
+        if b:
+            b.next()
+    
+    followers = [Action(backup.next_date, make_backup),
+                 Action(SCHEDULE_UPDATE_PERIOD,
+                        update_schedule,
+                        on_update=on_schedule_update)]
     if update_schedule() or client_status.schedule:
-        actions.append(update_schedule_action())
-        actions.append(backup_action())
+        actions.extend(followers)
     else:
-        def on_schedule_download(actions=actions):
-            actions[-1] = update_schedule_action()
-            actions.append(backup_action())
-        actions.append(Action(SCHEDULE_UPDATE_PERIOD,
-                              update_schedule,
-                              on_update=on_schedule_download,
-                              on_404=True))
-
+        actions.add(OneTimeAction(SCHEDULE_UPDATE_PERIOD,
+                                  update_schedule,
+                                  followers=followers))
     log.info('Start main loop')
     while True:
-        action = min(actions)
+        action = actions.next()
         log.info('Next action is %s' % action)
         time.sleep(action.time_left())
         action()
