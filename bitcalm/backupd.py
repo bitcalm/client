@@ -301,7 +301,7 @@ def work():
                             update_schedule,
                             on_update=on_schedule_update)]
     if update_schedule() or client_status.schedule:
-        actions.extend(followers)
+        actions.extend([f.grow() for f in followers])
     else:
         actions.add(OneTimeAction(SCHEDULE_UPDATE_PERIOD,
                                   update_schedule,
