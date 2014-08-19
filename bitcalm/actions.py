@@ -37,7 +37,7 @@ class ActionPool(object):
         return None
 
     def next(self):
-        return min(self._actions)
+        return min(filter(lambda a: bool(a.time), self._actions))
 
 
 class Action(object):
