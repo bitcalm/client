@@ -118,10 +118,6 @@ def update_files():
         if not fs_watcher.notifier.is_alive():
             log.info('Start watching filesystem')
             fs_watcher.start()
-        a = actions.get('check_free_space')
-        if a:
-            actions.remove(a)
-            actions.add(Action(backup.next_date, make_backup))
         return 1
     elif status == 304:
         return 2
@@ -159,10 +155,17 @@ def compress_backup():
         space=backup.available_space()
         backup_action = actions.get(make_backup)
         actions.remove(backup_action)
-        actions.add(OneTimeAction(nexttime=30*MIN,
-                                  func=lambda: backup.available_space() > space,
-                                  tag='check_free_space',
-                                  followers=[backup_action]))
+        new = [OneTimeAction(nexttime=30*MIN,
+                             func=lambda: backup.available_space() > space,
+                             tag='check_free_space',
+                             followers=[backup_action],
+                             cancel=['files_changed']),
+               OneTimeAction(nexttime=30*MIN,
+                             func=lambda: update_files() == 1,
+                             tag='files_changed',
+                             followers=[backup_action],
+                             cancel=['check_free_space'])]
+        actions.extend(new)
         return False
     client_status.backup['status'] = 'compressed'
     client_status.save()
