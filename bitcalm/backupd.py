@@ -156,7 +156,7 @@ def compress_backup():
         backup_action = actions.get(make_backup)
         actions.remove(backup_action)
         new = [OneTimeAction(nexttime=30*MIN,
-                             func=lambda: backup.available_space() > space,
+                             func=lambda s=space: backup.available_space() > s,
                              tag='check_free_space',
                              followers=[backup_action],
                              cancel=['files_changed']),
