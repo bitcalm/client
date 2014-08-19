@@ -26,6 +26,7 @@ class ActionPool(object):
 
     def remove(self, action):
         self._actions.remove(action)
+        action.pool = None
 
     def get(self, func_or_tag):
         """ Returns action identified by it's function or tag
@@ -37,7 +38,9 @@ class ActionPool(object):
         return None
 
     def next(self):
-        return min(filter(lambda a: bool(a.time), self._actions))
+        if self._actions:
+            return min(filter(lambda a: bool(a.time), self._actions))
+        return None
 
 
 class Action(object):
@@ -92,6 +95,8 @@ class Action(object):
 class OneTimeAction(Action):
     def __init__(self, nexttime, func, *args, **kwargs):
         self._followers = kwargs.pop('followers', [])
+        # cancel can contain function, tag or action
+        self._cancel = kwargs.pop('cancel', [])
         super(OneTimeAction, self).__init__(nexttime, func, *args, **kwargs)
 
     def __call__(self):
@@ -99,14 +104,23 @@ class OneTimeAction(Action):
         self.lastexectime = datetime.utcnow()
         if self._func(*self._args, **self._kwargs):
             if self.pool:
+                pool = self.pool
                 self.pool.remove(self)
+
+                for item in self._cancel:
+                    if not isinstance(item, Action):
+                        item = pool.get(item)
+                        if not item:
+                            continue
+                    pool.remove(item)
+
                 if self._followers:
                     def grow(a):
                         if isinstance(a, ActionSeed):
                             return a.grow()
                         return a
                     self._followers = map(grow, self._followers)
-                    self.pool.extend(self._followers)
+                    pool.extend(self._followers)
                 for follower in self._followers:
                     follower.next()
             log.info('Action %s complete' % self._func)
