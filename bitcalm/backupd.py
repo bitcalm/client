@@ -286,8 +286,7 @@ def work():
             log.info('Start watching filesystem')
             fs_watcher.start()
 
-    actions.extend([Action(FS_UPLOAD_PERIOD, upload_fs,
-                           tag=None, fs_watcher.changelog),
+    actions.extend([Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
                     Action(LOG_UPLOAD_PERIOD, upload_log),
                     Action(RESTORE_CHECK_PERIOD, restore),
                     Action(FS_SET_PERIOD, set_fs)])

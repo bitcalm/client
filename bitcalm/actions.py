@@ -41,8 +41,8 @@ class ActionPool(object):
 
 
 class Action(object):
-    def __init__(self, nexttime, func, tag=None, *args, **kwargs):
-        self.tag = tag
+    def __init__(self, nexttime, func, *args, **kwargs):
+        self.tag = kwargs.pop('tag', None)
         self.pool = None
         self.lastexectime = None
         self._func = func
@@ -90,17 +90,9 @@ class Action(object):
 
 
 class OneTimeAction(Action):
-    def __init__(self,
-                 nexttime,
-                 func,
-                 tag=None,
-                 followers=[],
-                 *args, **kwargs):
-        self._followers = followers
-        super(OneTimeAction, self).__init__(nexttime,
-                                            func,
-                                            tag=tag,
-                                            *args, **kwargs)
+    def __init__(self, nexttime, func, *args, **kwargs):
+        self._followers = kwargs.pop('followers', [])
+        super(OneTimeAction, self).__init__(nexttime, func, *args, **kwargs)
 
     def __call__(self):
         log.info('Perform action: %s' % self._func)
