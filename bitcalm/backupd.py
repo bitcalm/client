@@ -118,11 +118,10 @@ def update_files():
         if not fs_watcher.notifier.is_alive():
             log.info('Start watching filesystem')
             fs_watcher.start()
-        if not actions.get(make_backup):
+        a = actions.get('check_free_space')
+        if a:
+            actions.remove(a)
             actions.add(Action(backup.next_date, make_backup))
-            a = actions.get('check_free_space')
-            if a:
-                actions.remove(a)
         return 1
     elif status == 304:
         return 2
@@ -274,7 +273,7 @@ def work():
             client_status.save()
 
     set_fs()
-    
+
     global fs_watcher
     if not fs_watcher:
         log.info('Create watch manager')
