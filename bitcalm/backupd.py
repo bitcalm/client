@@ -11,14 +11,16 @@ from datetime import datetime, date
 from logging import FileHandler
 from threading import Thread
 
+import MySQLdb
 from daemon import DaemonContext
 
 import backup
 import log
-from config import status as client_status
+from config import config, status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
 from actions import ActionPool, OneTimeAction, Action, ActionSeed
+from _mysql_exceptions import OperationalError
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -93,9 +95,7 @@ def upload_log(entries=log.upload):
 def update_schedule(on_update=None, on_404=False):
     status, content = api.get_schedule()
     if status == 200:
-        content['time'] = (int(content['time'][:2]),
-                           int(content['time'][2:]))
-        client_status.schedule = content
+        client_status.schedules = content
         client_status.save()
         if on_update:
             on_update()
@@ -124,26 +124,60 @@ def update_files():
     return 0
 
 
-def restore():
-    status, content = api.check_restore()
-    if status == 200:
-        if content:
-            log.info('Start backup restore.')
-            complete = []
-            for item in content:
-                error = backup.restore(item['key'], paths=item.get('items'))
-                if error:
-                    log.error(error)
-                    break
-                else:
-                    complete.append(item['id'])
-            else:
-                log.info('All restore tasks are complete.')
-            if complete:
-                api.restore_complete(complete)
+def check_db():
+    if not config.database:
         return True
+    databases = {}
+    for db in config.database:
+        try:
+            conn = MySQLdb.connect(**db)
+        except OperationalError, e:
+            log.error("Access denied for user '%s'@'%s' (using password: YES)" % (db['user'], db['host']))
+            continue
+        cur = conn.cursor()
+        cur.execute('SHOW databases')
+        db_names = [row[0] for row in cur.fetchall()]
+        cur.close()
+        databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
+
+
+def check_changes(on_schedule_update=None):
+    status, content = api.get_changes()
+    if status == 200:
+        access = content.get('access')
+        if access:
+            client_status.amazon = access
+        schedules = content.get('schedules')
+        if schedules:
+            client_status.schedules = schedules
+            if on_schedule_update:
+                on_schedule_update()
+        
+        # db
+        
+        restore = content.get('restore')
+        if restore:
+            pass
+    elif status == 304:
+        return True
+    return False
+
+
+def restore(tasks):
+    log.info('Start backup restore.')
+    complete = []
+    for item in tasks:
+        error = backup.restore(item['key'], paths=item.get('items'))
+        if error:
+            log.error(error)
+            break
+        else:
+            complete.append(item['id'])
     else:
-        return False
+        log.info('All restore tasks are complete.')
+    if complete:
+        api.restore_complete(complete)
+    return len(tasks) == len(complete)
 
 
 def compress_backup():

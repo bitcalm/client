@@ -91,7 +91,7 @@ class Status(object):
     OPTIONS = ('key',
                'is_registered',
                'fshash',
-               'schedule',
+               'schedules',
                'files',
                'files_hash',
                'prev_backup',
