@@ -67,7 +67,7 @@ class Action(object):
         self.lastexectime = datetime.utcnow()
         if self._func(*self._args, **self._kwargs):
             self.next()
-            log.info('Action %s complete' % self._func)
+            log.info('Action %s is complete' % self._func)
         else:
             self.delay()
             log.error('Action %s failed' % self._func)
@@ -123,10 +123,9 @@ class OneTimeAction(Action):
                     pool.extend(self._followers)
                 for follower in self._followers:
                     follower.next()
-            log.info('Action %s complete' % self._func)
+            log.info('Action %s is complete' % self._func)
         else:
             self.next()
-            log.error('Action %s failed' % self._func)
 
 
 class ActionSeed(object):
