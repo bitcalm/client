@@ -95,6 +95,7 @@ class Status(object):
                'files',
                'files_hash',
                'prev_backup',
+               'backup',
                'amazon')
     
     def __init__(self, path, **kwargs):

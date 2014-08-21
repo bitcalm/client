@@ -1,15 +1,18 @@
 import os
+import math
 import tarfile
 import calendar
 from datetime import datetime, date, timedelta
 
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
+from filechunkio import FileChunkIO
 
 from bitcalm.config import status
 
 
 TMP_FILEPATH = '/tmp/backup.tar.gz'
+CHUNK_SIZE = 32 * 1024 * 1024
 
 class SCHEDULE:
     DAILY = 'daily'
@@ -68,6 +71,8 @@ def next_monthly():
 
 
 def get_next():
+    if not status.schedule:
+        return None
     for key in SCHEDULE.TYPES:
         if key in status.schedule:
             func = {SCHEDULE.DAILY: next_daily,
@@ -97,12 +102,25 @@ def compress(tmp_file=TMP_FILEPATH):
 
 def upload(filepath=TMP_FILEPATH, delete=True):
     bucket = get_bucket()
-    k = Key(bucket)
-    k.key = os.path.basename(filepath)
-    size = k.set_contents_from_filename(filepath, encrypt_key=True)
+    size = os.stat(filepath).st_size
+    key_name = os.path.basename(filepath)
+    if size > CHUNK_SIZE:
+        chunks = int(math.ceil(size / float(CHUNK_SIZE)))
+        mp = bucket.initiate_multipart_upload(key_name, encrypt_key=True)
+        for i in xrange(chunks):
+            offset = CHUNK_SIZE * i
+            psize = min(CHUNK_SIZE, size - offset)
+            with FileChunkIO(filepath, mode='r',
+                             offset=offset, bytes=psize) as f:
+                mp.upload_part_from_file(f, part_num=i+1)
+        mp.complete_upload()
+    else:
+        k = Key(bucket)
+        k.key = key_name
+        size = k.set_contents_from_filename(filepath, encrypt_key=True)
     if delete:
         os.remove(filepath)
-    return k.key, size
+    return key_name, size
 
 
 def backup(filepath=TMP_FILEPATH):
@@ -116,9 +134,7 @@ def restore(key, paths=None):
         return 'There is no key "%s" in the bucket' % key
 
     tmp = '/tmp/'
-    tmp_stats = os.statvfs(tmp)
-    available_space = tmp_stats.f_bavail * tmp_stats.f_frsize
-    if available_space < k.size:
+    if available_space() < k.size:
         return 'Not enough available space in %s' % tmp
 
     tmp_file = tmp + key
@@ -152,3 +168,8 @@ def restore(key, paths=None):
     tar.close()
     os.remove(tmp_file)
     return None
+
+
+def available_space(path='/tmp/'):
+    stats = os.statvfs(path)
+    return stats.f_bavail * stats.f_frsize

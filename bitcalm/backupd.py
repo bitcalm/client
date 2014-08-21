@@ -7,7 +7,7 @@ import time
 import platform
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
-from datetime import datetime, timedelta, date
+from datetime import datetime, date
 from logging import FileHandler
 from threading import Thread
 
@@ -18,6 +18,7 @@ import log
 from config import status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
+from actions import ActionPool, OneTimeAction, Action, ActionSeed
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -35,54 +36,8 @@ PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
 
-class Action(object):
-    def __init__(self, nexttime, func, *args, **kwargs):
-        self.lastexectime = None
-        self._func = func
-        if callable(nexttime):
-            self._period = 0
-            self._next = nexttime
-        else:
-            self._period = nexttime
-            self._next = self._default_next
-        self.next()
-        self._args = args
-        self._kwargs = kwargs
-    
-    def __str__(self):
-        return '%s at %s' % (self._func, self.time)
-    
-    def __call__(self):
-        log.info('Perform action: %s' % self._func)
-        self.lastexectime = datetime.utcnow()
-        if self._func(*self._args, **self._kwargs):
-            self.next()
-            log.info('Action %s complete' % self._func)
-        else:
-            self.delay()
-            log.error('Action %s failed' % self._func)
-    
-    def __cmp__(self, other):
-        return cmp(self.time, other.time)
-    
-    def _default_next(self):
-        return (self.lastexectime or datetime.utcnow()) \
-            + timedelta(seconds=self._period)
-    
-    def next(self):
-        self.time = self._next()
-    
-    def delay(self, period=600):
-        self.time = datetime.utcnow() + timedelta(seconds=period)
-    
-    def time_left(self):
-        now = datetime.utcnow()
-        if self.time > now:
-            return (self.time - now).total_seconds()
-        return 0
-
-
 fs_watcher = None
+actions = ActionPool()
 
 
 def on_stop(signum, frame):
@@ -191,34 +146,92 @@ def restore():
         return False
 
 
-def make_backup():
-    if not update_files() or not client_status.files:
+def compress_backup():
+    try:
+        backup.compress(client_status.backup['path'])
+    except IOError:
+        log.error('There is not enough free space on device')
+        os.remove(client_status.backup['path'])
+        space=backup.available_space()
+        backup_action = actions.get(make_backup)
+        actions.remove(backup_action)
+        new = [OneTimeAction(nexttime=30*MIN,
+                             func=lambda s=space: backup.available_space() > s,
+                             tag='check_free_space',
+                             followers=[backup_action],
+                             cancel=['files_changed']),
+               OneTimeAction(nexttime=30*MIN,
+                             func=lambda: update_files() == 1,
+                             tag='files_changed',
+                             followers=[backup_action],
+                             cancel=['check_free_space'])]
+        actions.extend(new)
         return False
-    if not client_status.amazon:
-        status, content = api.get_s3_access()
-        if status == 200:
-            client_status.amazon = content
-            client_status.save()
-        else:
-            log.error('Getting S3 access failed')
-            return False
+    client_status.backup['status'] = 'compressed'
+    client_status.save()
+    return True
 
-    status, backup_id = api.set_backup_info('compress',
-                                            time=time.time(),
-                                            files='\n'.join(client_status.files))
-    if not status == 200:
-        return False
-    tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
-    backup.compress(tmp)
-    kwargs = {'backup_id': backup_id}
-    api.set_backup_info('upload', **kwargs)
-    key, size = backup.upload(tmp)
+def prepare_backup_upload():
+    api.set_backup_info('upload', backup_id=client_status.backup['backup_id'])
+    client_status.backup['status'] = 'upload'
+    client_status.save()
+    return True
+
+def upload_backup():
+    key, size = backup.upload(client_status.backup['path'])
+    client_status.backup['status'] = 'uploaded'
+    client_status.backup['time'] = time.time()
+    client_status.backup['keyname'] = key
+    client_status.backup['size'] = size
+    client_status.save()
+    return True
+
+def complete_backup():
+    del client_status.backup['status']
+    del client_status.backup['path']
+    api.set_backup_info('complete', **client_status.backup)
+    client_status.backup = None
     client_status.prev_backup = date.today().strftime('%Y.%m.%d')
     client_status.save()
-    kwargs['time'] = time.time()
-    kwargs['keyname'] = key
-    kwargs['size'] = size
-    api.set_backup_info('complete', **kwargs)
+    return True
+
+def make_backup():
+    steps = [compress_backup,
+             prepare_backup_upload,
+             upload_backup,
+             complete_backup]
+    bstatus = client_status.backup and client_status.backup.get('status')
+    if not bstatus:
+        if not update_files() or not client_status.files:
+            return False
+        if not client_status.amazon:
+            status, content = api.get_s3_access()
+            if status == 200:
+                client_status.amazon = content
+                client_status.save()
+            else:
+                log.error('Getting S3 access failed')
+                return False
+    
+        status, backup_id = api.set_backup_info('compress',
+                                                time=time.time(),
+                                                files='\n'.join(client_status.files))
+        if not status == 200:
+            return False
+        tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
+        client_status.backup = {'backup_id': backup_id,
+                                'path': tmp,
+                                'status': 'compress'}
+        client_status.save()
+    else:
+        status_map = {s: i for i, s in enumerate(('compress',
+                                                  'compressed',
+                                                  'upload',
+                                                  'uploaded'))}
+        steps = steps[status_map.get(bstatus):]
+    for step in steps:
+        if not step():
+            return False
     return True
 
 
@@ -248,9 +261,22 @@ def work():
             if status == 200:
                 log.info('Crash reported')
                 os.remove(CRASH_PATH)
+    
+    if client_status.backup:
+        status = client_status.backup['status']
+        if os.path.exists(client_status.backup['path']):
+            if status == 'compress':
+                os.remove(client_status.backup['path'])
+                client_status.backup = None
+                client_status.save()
+            elif status == 'uploaded':
+                os.remove(client_status.backup['path'])
+        else:
+            client_status.backup = None
+            client_status.save()
 
     set_fs()
-    
+
     global fs_watcher
     if not fs_watcher:
         log.info('Create watch manager')
@@ -262,35 +288,29 @@ def work():
             log.info('Start watching filesystem')
             fs_watcher.start()
 
-    actions = [Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
-               Action(LOG_UPLOAD_PERIOD, upload_log),
-               Action(RESTORE_CHECK_PERIOD, restore),
-               Action(FS_SET_PERIOD, set_fs)]
+    actions.extend([Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
+                    Action(LOG_UPLOAD_PERIOD, upload_log),
+                    Action(RESTORE_CHECK_PERIOD, restore),
+                    Action(FS_SET_PERIOD, set_fs)])
 
-    backup_action = lambda: Action(backup.get_next(), make_backup)
+    def on_schedule_update():
+        b = actions.get(make_backup)
+        if b:
+            b.next()
 
-    def on_schedule_update(actions=actions):
-        actions[-1] = backup_action()
-
-    update_schedule_action = lambda: Action(SCHEDULE_UPDATE_PERIOD,
-                                            update_schedule,
-                                            on_update=on_schedule_update)
-
+    followers = [ActionSeed(backup.next_date, make_backup),
+                 ActionSeed(SCHEDULE_UPDATE_PERIOD,
+                            update_schedule,
+                            on_update=on_schedule_update)]
     if update_schedule() or client_status.schedule:
-        actions.append(update_schedule_action())
-        actions.append(backup_action())
+        actions.extend([f.grow() for f in followers])
     else:
-        def on_schedule_download(actions=actions):
-            actions[-1] = update_schedule_action()
-            actions.append(backup_action())
-        actions.append(Action(SCHEDULE_UPDATE_PERIOD,
-                              update_schedule,
-                              on_update=on_schedule_download,
-                              on_404=True))
-
+        actions.add(OneTimeAction(SCHEDULE_UPDATE_PERIOD,
+                                  update_schedule,
+                                  followers=followers))
     log.info('Start main loop')
     while True:
-        action = min(actions)
+        action = actions.next()
         log.info('Next action is %s' % action)
         time.sleep(action.time_left())
         action()

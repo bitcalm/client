@@ -1,5 +1,6 @@
 argparse==1.2.1
 boto==2.28.0
+filechunkio==1.5
 lockfile==0.9.1
 pyinotify==0.9.4
 python-daemon==1.6
