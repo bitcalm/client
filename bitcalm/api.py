@@ -8,6 +8,15 @@ from urllib import urlencode
 from config import config, status as client_status
 
 
+def returns_json(func):
+    def inner(self, *args, **kwargs):
+        status, content = func(self, *args, **kwargs)
+        if status == 200:
+            content = json.loads(content)
+        return status, content
+    return inner
+
+
 class Api(object):
     BOUNDARY = '-' * 20 + sha(str(random())).hexdigest()[:20]
     
@@ -78,29 +87,18 @@ class Api(object):
         else:
             kwargs = {'data': {'entries': entries[0]}}
         return self._send('log', **kwargs)
-    
-    def get_schedule(self):
-        data = {}
-        if client_status.schedule:
-            data['v'] = client_status.schedule['version']
-        status, content = self._send('backup/schedule',
-                                     data=data,
-                                     method='GET')
-        if status == 200:
-            content = json.loads(content)
-        return status, content
-    
-    def get_files(self):
-        data = {}
-        if client_status.files_hash:
-            data['fhash'] = client_status.files_hash
-        return self._send('backup/files', data=data, method='GET')
 
+    @returns_json
+    def get_schedules(self):
+        return self._send('get/schedules', method='GET')
+
+    @returns_json
+    def get_changes(self):
+        return self._send('changes', method='GET')
+
+    @returns_json
     def get_s3_access(self):
-        status, content = self._send('backup/access', method='GET')
-        if status == 200:
-            content = json.loads(content)
-        return status, content
+        return self._send('get/access', method='GET')
     
     def set_backup_info(self, status, **kwargs):
         backup_id = kwargs.pop('backup_id', None)
@@ -116,19 +114,21 @@ class Api(object):
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]
 
+    @returns_json
+    def get_db_credentials(self):
+        return self._send('get/db', method='GET')
+
     def report_crash(self, info, when):
         return self._send('crash',
                           data={'time': when},
                           files={'info': zlib.compress(info, 9)})[0]
-    
+
+    @returns_json
     def check_restore(self):
-        status, content = self._send('backup/restore', method='GET')
-        if status == 200 and content:
-            content = json.loads(content)
-        return status, content
+        return self._send('get/restore', method='GET')
 
     def restore_complete(self, tasks):
-        return self._send('backup/restore/complete',
+        return self._send('backup/restore_complete',
                           data={'tasks': ','.join(map(str, tasks))})[0]
 
 
