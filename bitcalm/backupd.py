@@ -232,7 +232,8 @@ def make_backup():
         schedule = backup.next_schedule()
         status, backup_id = api.set_backup_info('compress',
                                                 time=time.time(),
-                                                files='\n'.join(schedule.files))
+                                                files='\n'.join(schedule.files),
+                                                schedule=schedule.id)
         if not status == 200:
             return False
         tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
