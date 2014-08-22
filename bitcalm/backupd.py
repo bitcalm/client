@@ -7,7 +7,7 @@ import time
 import platform
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
-from datetime import datetime, date
+from datetime import datetime
 from logging import FileHandler
 from threading import Thread
 
@@ -20,6 +20,7 @@ from config import config, status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
 from actions import ActionPool, OneTimeAction, Action, ActionSeed
+from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
 from _mysql_exceptions import OperationalError
 
 
@@ -32,8 +33,7 @@ HOUR = 60 * MIN
 FS_UPLOAD_PERIOD = 30 * MIN
 FS_SET_PERIOD = 24 * HOUR
 LOG_UPLOAD_PERIOD = 5 * MIN
-SCHEDULE_UPDATE_PERIOD = HOUR
-RESTORE_CHECK_PERIOD = 10 * MIN
+CHANGES_CHECK_PERIOD = 10 * MIN
 PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
@@ -92,36 +92,13 @@ def upload_log(entries=log.upload):
     return False
 
 
-def update_schedule(on_update=None, on_404=False):
-    status, content = api.get_schedule()
-    if status == 200:
-        client_status.schedules = content
-        client_status.save()
-        if on_update:
-            on_update()
+def get_s3_access():
+    status, content = api.get_s3_access()
+    if status == 200 and content:
+        client_status.amazon = content
         return True
-    return {304: True, 404: on_404}.get(status, False)
-
-
-def update_files():
-    """ Returns:
-            0 if update failed;
-            1 if files are updated;
-            2 if files not changed.
-    """
-    status, content = api.get_files()
-    if status == 200:
-        client_status.files_hash = sha(content).hexdigest()
-        client_status.files = content.split('\n')
-        client_status.save()
-        fs_watcher.set_paths(client_status.files)
-        if not fs_watcher.notifier.is_alive():
-            log.info('Start watching filesystem')
-            fs_watcher.start()
-        return 1
-    elif status == 304:
-        return 2
-    return 0
+    log.error('Getting S3 access failed')
+    return False
 
 
 def check_db():
@@ -144,20 +121,33 @@ def check_db():
 def check_changes(on_schedule_update=None):
     status, content = api.get_changes()
     if status == 200:
-        access = content.get('access')
-        if access:
-            client_status.amazon = access
+        to_status = (('access', 'amazon'),
+                     ('db', 'database'))
+        for key, attr in to_status:
+            value = content.get(key)
+            if value:
+                setattr(client_status, attr or key, value)
         schedules = content.get('schedules')
         if schedules:
-            client_status.schedules = schedules
+            ids = []
+            types = {'daily': DailySchedule,
+                     'weekly': WeeklySchedule,
+                     'monthly': MonthlySchedule}
+            for i, s in enumerate(schedules):
+                if 'db' in s:
+                    s['db'] = pickle.loads(s['db'])
+                ids.append(s['id'])
+                schedules[i] = types[s.pop('type')](**s)
+            client_status.schedules = filter(lambda s: s.id not in ids,
+                                             client_status.schedules)
+            client_status.schedules.extend(schedules)
             if on_schedule_update:
                 on_schedule_update()
-        
-        # db
-        
-        restore = content.get('restore')
-        if restore:
-            pass
+        client_status.save()
+        tasks = content.get('restore')
+        if tasks:
+            actions.add(OneTimeAction(30, restore, tasks))
+        return True
     elif status == 304:
         return True
     return False
@@ -182,24 +172,27 @@ def restore(tasks):
 
 def compress_backup():
     try:
-        backup.compress(client_status.backup['path'])
+        backup.compress(client_status.backup['files'],
+                        client_status.backup['path'])
     except IOError:
         log.error('There is not enough free space on device')
         os.remove(client_status.backup['path'])
         space=backup.available_space()
-        backup_action = actions.get(make_backup)
-        actions.remove(backup_action)
-        new = [OneTimeAction(nexttime=30*MIN,
-                             func=lambda s=space: backup.available_space() > s,
-                             tag='check_free_space',
-                             followers=[backup_action],
-                             cancel=['files_changed']),
-               OneTimeAction(nexttime=30*MIN,
-                             func=lambda: update_files() == 1,
-                             tag='files_changed',
-                             followers=[backup_action],
-                             cancel=['check_free_space'])]
-        actions.extend(new)
+        schedule = backup.next_schedule()
+        schedule.exclude = True
+        client_status.save()
+    
+        def test_space(schedule=schedule, space=space):
+            if schedule not in client_status.schedules:
+                return True
+            if backup.available_space() > space:
+                schedule.exclude = False
+                client_status.save()
+                return True
+            return False
+        actions.add(OneTimeAction(nexttime=30*MIN,
+                                  func=test_space,
+                                  tag='check_free_space'))
         return False
     client_status.backup['status'] = 'compressed'
     client_status.save()
@@ -221,11 +214,11 @@ def upload_backup():
     return True
 
 def complete_backup():
-    del client_status.backup['status']
-    del client_status.backup['path']
+    for item in ('status', 'path', 'files'):
+        del client_status.backup[item]
     api.set_backup_info('complete', **client_status.backup)
     client_status.backup = None
-    client_status.prev_backup = date.today().strftime('%Y.%m.%d')
+    backup.next_schedule().done()
     client_status.save()
     return True
 
@@ -236,26 +229,17 @@ def make_backup():
              complete_backup]
     bstatus = client_status.backup and client_status.backup.get('status')
     if not bstatus:
-        if not update_files() or not client_status.files:
-            return False
-        if not client_status.amazon:
-            status, content = api.get_s3_access()
-            if status == 200:
-                client_status.amazon = content
-                client_status.save()
-            else:
-                log.error('Getting S3 access failed')
-                return False
-    
+        schedule = backup.next_schedule()
         status, backup_id = api.set_backup_info('compress',
                                                 time=time.time(),
-                                                files='\n'.join(client_status.files))
+                                                files='\n'.join(schedule.files))
         if not status == 200:
             return False
         tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
         client_status.backup = {'backup_id': backup_id,
                                 'path': tmp,
-                                'status': 'compress'}
+                                'status': 'compress',
+                                'files': schedule.files}
         client_status.save()
     else:
         status_map = {s: i for i, s in enumerate(('compress',
@@ -311,37 +295,55 @@ def work():
 
     set_fs()
 
-    global fs_watcher
-    if not fs_watcher:
-        log.info('Create watch manager')
-        fs_watcher = Watcher()
-    
-    if update_files() == 2 and client_status.files:
-        fs_watcher.set_paths(client_status.files)
-        if not fs_watcher.notifier.is_alive():
+    def update_watcher(files=None):
+        if not files:
+            files = client_status.get_files()
+        global fs_watcher
+        if not fs_watcher:
+            log.info('Create watch manager')
+            fs_watcher = Watcher()
             log.info('Start watching filesystem')
             fs_watcher.start()
-
-    actions.extend([Action(FS_UPLOAD_PERIOD, upload_fs, fs_watcher.changelog),
-                    Action(LOG_UPLOAD_PERIOD, upload_log),
-                    Action(RESTORE_CHECK_PERIOD, restore),
-                    Action(FS_SET_PERIOD, set_fs)])
+        fs_watcher.set_paths(files)
+        if not actions.get(upload_fs):
+            actions.add(Action(FS_UPLOAD_PERIOD,
+                               upload_fs,
+                               fs_watcher.changelog))
 
     def on_schedule_update():
+        files = client_status.get_files()
+        if files:
+            update_watcher(files)
+        else:
+            global fs_watcher
+            if fs_watcher:
+                fs_watcher.stop()
+                fs_watcher = None
+            if actions.get(upload_fs):
+                actions.remove(upload_fs)
         b = actions.get(make_backup)
         if b:
             b.next()
+        else:
+            actions.add(Action(backup.next_date, make_backup))
 
-    followers = [ActionSeed(backup.next_date, make_backup),
-                 ActionSeed(SCHEDULE_UPDATE_PERIOD,
-                            update_schedule,
-                            on_update=on_schedule_update)]
-    if update_schedule() or client_status.schedule:
-        actions.extend([f.grow() for f in followers])
+    actions.extend([Action(LOG_UPLOAD_PERIOD, upload_log),
+                    Action(FS_SET_PERIOD, set_fs),
+                    Action(CHANGES_CHECK_PERIOD,
+                           check_changes,
+                           on_schedule_update=on_schedule_update)])
+    
+    if client_status.amazon:
+        actions.add(Action(backup.next_date, make_backup))
     else:
-        actions.add(OneTimeAction(SCHEDULE_UPDATE_PERIOD,
-                                  update_schedule,
-                                  followers=followers))
+        actions.add(OneTimeAction(5*MIN,
+                                  get_s3_access,
+                                  followers=[ActionSeed(backup.next_date,
+                                                        make_backup)]))
+    
+    if client_status.has_files():
+        update_watcher()
+
     log.info('Start main loop')
     while True:
         action = actions.next()

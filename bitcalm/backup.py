@@ -20,7 +20,7 @@ def next_date():
 
 def next_schedule():
     if status.schedules:
-        return min(status.schedules)
+        return min([s for s in status.schedules if not s.exclude])
     return None
 
 
@@ -30,9 +30,9 @@ def get_bucket():
     return conn.get_bucket(status.amazon['bucket'])
 
 
-def compress(tmp_file=TMP_FILEPATH):
+def compress(files, tmp_file=TMP_FILEPATH):
     with tarfile.open(tmp_file, 'w:gz') as tar:
-        for path in status.files:
+        for path in files:
             tar.add(path)
     return tmp_file
 

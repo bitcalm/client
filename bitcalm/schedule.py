@@ -10,6 +10,7 @@ class Schedule(object):
         self.databases = kwargs.get('db', [])
         self.prev_backup = None
         self.next_backup = self.get_next()
+        self.exclude = False
     
     def __cmp__(self, other):
         return cmp(self.next_backup, other.next_backup)

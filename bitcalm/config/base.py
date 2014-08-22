@@ -92,11 +92,11 @@ class Status(object):
                'is_registered',
                'fshash',
                'schedules',
-               'files',
-               'files_hash',
-               'prev_backup',
+               'database',
                'backup',
                'amazon')
+    DEFAULT = {'schedules': [],
+               'database': []}
     
     def __init__(self, path, **kwargs):
         self.path = path
@@ -109,8 +109,22 @@ class Status(object):
         for option in Status.OPTIONS:
             setattr(self,
                     option,
-                    data.get(option, kwargs.get(option)))
+                    data.get(option, kwargs.get(option) \
+                                        or Status.DEFAULT.get(option)))
+
+    def get_files(self):
+        files = []
+        for s in self.schedules:
+            if s.files:
+                files.extend(s.files)
+        return set(files)
     
+    def has_files(self):
+        for s in self.schedules:
+            if s.files:
+                return True
+        return False
+
     def save(self):
         with open(self.path, 'w') as f:
             data = {opt: getattr(self, opt, None) for opt in Status.OPTIONS}
