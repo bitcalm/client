@@ -5,6 +5,9 @@ import signal
 import pickle
 import time
 import platform
+import itertools
+import subprocess
+import gzip
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime
@@ -26,6 +29,7 @@ from _mysql_exceptions import OperationalError
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
+DEFAULT_DB_PORT = 3306
 
 MIN = 60
 HOUR = 60 * MIN
@@ -101,21 +105,29 @@ def get_s3_access():
     return False
 
 
+def get_db_connection(db):
+    try:
+        return MySQLdb.connect(**db)
+    except OperationalError, e:
+        log.error("Access denied for user '%s'@'%s' (using password: YES)" % (db['user'], db['host']))
+        return None
+
+
 def check_db():
     if not config.database:
         return True
     databases = {}
     for db in config.database:
-        try:
-            conn = MySQLdb.connect(**db)
-        except OperationalError, e:
-            log.error("Access denied for user '%s'@'%s' (using password: YES)" % (db['user'], db['host']))
+        conn = get_db_connection(db)
+        if not conn:
             continue
         cur = conn.cursor()
         cur.execute('SHOW databases')
         db_names = [row[0] for row in cur.fetchall()]
         cur.close()
+        conn.close()
         databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
+    return api.set_databases(databases) == 200
 
 
 def check_changes(on_schedule_update=None):
@@ -205,7 +217,8 @@ def prepare_backup_upload():
     return True
 
 def upload_backup():
-    key, size = backup.upload(client_status.backup['path'])
+    key, size = backup.upload(os.path.basename(client_status.backup['path']),
+                              client_status.backup['path'])
     client_status.backup['status'] = 'uploaded'
     client_status.backup['time'] = time.time()
     client_status.backup['keyname'] = key
@@ -252,6 +265,54 @@ def make_backup():
         if not step():
             return False
     return True
+
+
+def db_backup(databases):
+    if not client_status.backup:
+        return False
+    if not client_status.backup.get('databases'):
+        client_status.backup['databases'] = []
+        for host, dbnames in databases.iteritems():
+            if ':' in host:
+                host, port = host.split(':')
+            else:
+                port = DEFAULT_DB_PORT
+            for name in dbnames:
+                client_status.backup['databases'].append((host, port, name))
+        client_status.save()
+    db_creds = {}
+    make_key = lambda h, p: '%s:%i' % (h, p)
+    for db in itertools.chain(config.database, client_status.database):
+        key = make_key(db['host'], db.get('port', DEFAULT_DB_PORT))
+        db_creds[key] = (db['user'], db['passwd'])
+    key_prefix = 'backup_%i/databases/' % client_status.backup['backup_id']
+    success = 0
+    while client_status.backup['databases']:
+        host, port, name = client_status.backup['databases'].pop()
+        try:
+            user, passwd = db_creds[make_key(host, port)]
+        except KeyError:
+            log.error('There are no credentials for %s:%i' % (host, port))
+            client_status.save()
+            continue
+        ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
+        filename = '%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
+        path = '/tmp/' + filename
+        dump = subprocess.Popen(('mysqldump',
+                                 '-u', user,
+                                 '-p%s' % passwd,
+                                 name),
+                                stdout=subprocess.PIPE)
+        if dump.poll():
+            log.error('Dump of %s from %s:%i failed' % (name, host, port))
+            client_status.save()
+            continue
+        with gzip.open(path, 'wb') as f:
+            f.write(dump.stdout.read())
+        backup.upload(os.path.join(key_prefix, filename), path)
+        client_status.save()
+        success += 1
+    return success
 
 
 def immortal(func):
