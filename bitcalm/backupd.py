@@ -236,13 +236,13 @@ def complete_backup():
     return True
 
 def make_backup():
+    schedule = backup.next_schedule()
     steps = [compress_backup,
              prepare_backup_upload,
              upload_backup,
              complete_backup]
     bstatus = client_status.backup and client_status.backup.get('status')
     if not bstatus:
-        schedule = backup.next_schedule()
         status, backup_id = api.set_backup_info('compress',
                                                 time=time.time(),
                                                 files='\n'.join(schedule.files),
@@ -261,6 +261,9 @@ def make_backup():
                                                   'upload',
                                                   'uploaded'))}
         steps = steps[status_map.get(bstatus):]
+    if schedule.databases:
+        if not client_status.backup or client_status.backup.get('databases', True):
+            db_backup(schedule.databases)
     for step in steps:
         if not step():
             return False
