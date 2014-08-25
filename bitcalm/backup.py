@@ -37,10 +37,9 @@ def compress(files, tmp_file=TMP_FILEPATH):
     return tmp_file
 
 
-def upload(filepath=TMP_FILEPATH, delete=True):
+def upload(key_name, filepath=TMP_FILEPATH, delete=True):
     bucket = get_bucket()
     size = os.stat(filepath).st_size
-    key_name = os.path.basename(filepath)
     if size > CHUNK_SIZE:
         chunks = int(math.ceil(size / float(CHUNK_SIZE)))
         mp = bucket.initiate_multipart_upload(key_name, encrypt_key=True)
