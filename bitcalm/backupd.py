@@ -182,140 +182,108 @@ def restore(tasks):
     return len(tasks) == len(complete)
 
 
-def compress_backup():
-    try:
-        backup.compress(client_status.backup['files'],
-                        client_status.backup['path'])
-    except IOError:
-        log.error('There is not enough free space on device')
-        os.remove(client_status.backup['path'])
-        space=backup.available_space()
-        schedule = backup.next_schedule()
-        schedule.exclude = True
-        client_status.save()
-    
-        def test_space(schedule=schedule, space=space):
-            if schedule not in client_status.schedules:
-                return True
-            if backup.available_space() > space:
-                schedule.exclude = False
-                client_status.save()
-                return True
+def make_backup():
+    schedule = backup.next_schedule()
+    if not client_status.backup:
+        status, backup_id = api.set_backup_info('prepare',
+                                                time=time.time(),
+                                                schedule=schedule.id)
+        if not status == 200:
             return False
-        actions.add(OneTimeAction(nexttime=30*MIN,
-                                  func=test_space,
-                                  tag='check_free_space'))
-        return False
-    client_status.backup['status'] = 'compressed'
-    client_status.save()
-    return True
+        client_status.backup = {'backup_id': backup_id,
+                                'status': 0,
+                                'size': 0}
+        client_status.save()
+    else:
+        backup_id = client_status.backup['backup_id']
+    bstatus = client_status.backup
+    if schedule.files and bstatus['status'] < 2:
+        if bstatus['status'] == 0:
+            api.set_backup_info('filesystem', backup_id=backup_id)
+            bstatus['status'] = 1
+            client_status.save()
+        if bstatus.get('items') is None:
+            bstatus['items'] = {'dirs': filter(os.path.isdir,
+                                               schedule.files),
+                                'files': filter(os.path.isfile,
+                                                schedule.files)}
+            client_status.save()
+        key_prefix = 'backup_%i/filesystem' % backup_id
+        make_key = lambda f, p=key_prefix: '%s%s.gz' % (p, f)
+        while bstatus['items']['files']:
+            filename = bstatus['items']['files'].pop()
+            bstatus['size'] += backup.backup(make_key(filename), filename)
+            client_status.save()
+        while bstatus['items']['dirs']:
+            for path, dirs, files in os.walk(bstatus['items']['dirs'].pop()):
+                for fname in files:
+                    fpath = os.path.join(path, fname)
+                    bstatus['size'] += backup.backup(make_key(fpath), fpath)
+            client_status.save()
 
-def prepare_backup_upload():
-    api.set_backup_info('upload', backup_id=client_status.backup['backup_id'])
-    client_status.backup['status'] = 'upload'
-    client_status.save()
-    return True
+    if schedule.databases and bstatus['status'] < 3:
+        if bstatus['status'] != 2:
+            api.set_backup_info('database', backup_id=backup_id)
+            bstatus['status'] = 2
+            client_status.save()
+        if not bstatus.get('databases'):
+            bstatus['databases'] = []
+            for host, dbnames in schedule.databases.iteritems():
+                if ':' in host:
+                    host, port = host.split(':')
+                else:
+                    port = DEFAULT_DB_PORT
+                for name in dbnames:
+                    client_status.backup['databases'].append((host, port, name))
+                client_status.save()
+        db_creds = {}
+        make_key = lambda h, p: '%s:%i' % (h, p)
+        for db in itertools.chain(config.database, client_status.database):
+            key = make_key(db['host'], db.get('port', DEFAULT_DB_PORT))
+            db_creds[key] = (db['user'], db['passwd'])
+        key_prefix = 'backup_%i/databases/' % backup_id
+        db_success = 0
+        db_total = len(bstatus['databases'])
+        while bstatus['databases']:
+            host, port, name = bstatus['databases'].pop()
+            try:
+                user, passwd = db_creds[make_key(host, port)]
+            except KeyError:
+                log.error('There are no credentials for %s:%i' % (host, port))
+                client_status.save()
+                continue
+            ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
+            filename = '%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
+            path = '/tmp/' + filename
+            dump = subprocess.Popen(('mysqldump',
+                                     '-u', user,
+                                     '-p%s' % passwd,
+                                     name),
+                                    stdout=subprocess.PIPE)
+            if dump.poll():
+                log.error('Dump of %s from %s:%i failed' % (name, host, port))
+                client_status.save()
+                continue
+            with gzip.open(path, 'wb') as f:
+                f.write(dump.stdout.read())
+            bstatus['size'] += backup.upload(os.path.join(key_prefix,
+                                                          filename),
+                                             path)
+            client_status.save()
+            db_success += 1
+        if db_success != db_total:
+            log.error('%i of %i databases was backuped' % (db_success, db_total))
 
-def upload_backup():
-    key, size = backup.upload(os.path.basename(client_status.backup['path']),
-                              client_status.backup['path'])
-    client_status.backup['status'] = 'uploaded'
-    client_status.backup['time'] = time.time()
-    client_status.backup['keyname'] = key
-    client_status.backup['size'] = size
+    bstatus['status'] = 3
     client_status.save()
-    return True
-
-def complete_backup():
-    for item in ('status', 'path', 'files'):
-        del client_status.backup[item]
-    api.set_backup_info('complete', **client_status.backup)
+    api.set_backup_info('complete',
+                        backup_id=backup_id,
+                        time=time.time(),
+                        size=bstatus['size'])
     client_status.backup = None
     backup.next_schedule().done()
     client_status.save()
     return True
-
-def make_backup():
-    schedule = backup.next_schedule()
-    steps = [compress_backup,
-             prepare_backup_upload,
-             upload_backup,
-             complete_backup]
-    bstatus = client_status.backup and client_status.backup.get('status')
-    if not bstatus:
-        status, backup_id = api.set_backup_info('compress',
-                                                time=time.time(),
-                                                files='\n'.join(schedule.files),
-                                                schedule=schedule.id)
-        if not status == 200:
-            return False
-        tmp = '/tmp/backup_%s.tar.gz' % datetime.utcnow().strftime('%Y.%m.%d_%H%M')
-        client_status.backup = {'backup_id': backup_id,
-                                'path': tmp,
-                                'status': 'compress',
-                                'files': schedule.files}
-        client_status.save()
-    else:
-        status_map = {s: i for i, s in enumerate(('compress',
-                                                  'compressed',
-                                                  'upload',
-                                                  'uploaded'))}
-        steps = steps[status_map.get(bstatus):]
-    if schedule.databases:
-        if not client_status.backup or client_status.backup.get('databases', True):
-            db_backup(schedule.databases)
-    for step in steps:
-        if not step():
-            return False
-    return True
-
-
-def db_backup(databases):
-    if not client_status.backup:
-        return False
-    if not client_status.backup.get('databases'):
-        client_status.backup['databases'] = []
-        for host, dbnames in databases.iteritems():
-            if ':' in host:
-                host, port = host.split(':')
-            else:
-                port = DEFAULT_DB_PORT
-            for name in dbnames:
-                client_status.backup['databases'].append((host, port, name))
-        client_status.save()
-    db_creds = {}
-    make_key = lambda h, p: '%s:%i' % (h, p)
-    for db in itertools.chain(config.database, client_status.database):
-        key = make_key(db['host'], db.get('port', DEFAULT_DB_PORT))
-        db_creds[key] = (db['user'], db['passwd'])
-    key_prefix = 'backup_%i/databases/' % client_status.backup['backup_id']
-    success = 0
-    while client_status.backup['databases']:
-        host, port, name = client_status.backup['databases'].pop()
-        try:
-            user, passwd = db_creds[make_key(host, port)]
-        except KeyError:
-            log.error('There are no credentials for %s:%i' % (host, port))
-            client_status.save()
-            continue
-        ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
-        filename = '%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
-        path = '/tmp/' + filename
-        dump = subprocess.Popen(('mysqldump',
-                                 '-u', user,
-                                 '-p%s' % passwd,
-                                 name),
-                                stdout=subprocess.PIPE)
-        if dump.poll():
-            log.error('Dump of %s from %s:%i failed' % (name, host, port))
-            client_status.save()
-            continue
-        with gzip.open(path, 'wb') as f:
-            f.write(dump.stdout.read())
-        backup.upload(os.path.join(key_prefix, filename), path)
-        client_status.save()
-        success += 1
-    return success
 
 
 def immortal(func):

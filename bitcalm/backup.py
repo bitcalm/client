@@ -1,5 +1,6 @@
 import os
 import math
+import gzip
 import tarfile
 
 from boto.s3.connection import S3Connection
@@ -9,7 +10,6 @@ from filechunkio import FileChunkIO
 from bitcalm.config import status
 
 
-TMP_FILEPATH = '/tmp/backup.tar.gz'
 CHUNK_SIZE = 32 * 1024 * 1024
 
 
@@ -30,14 +30,16 @@ def get_bucket():
     return conn.get_bucket(status.amazon['bucket'])
 
 
-def compress(files, tmp_file=TMP_FILEPATH):
-    with tarfile.open(tmp_file, 'w:gz') as tar:
-        for path in files:
-            tar.add(path)
-    return tmp_file
+def compress(filename, gzipped=None):
+    if not gzipped:
+        gzipped = '/tmp/%s.gz' % os.path.basename(filename)
+    with open(filename, 'rb') as f:
+        with gzip.open(gzipped, 'wb') as gz:
+            gz.write(f.read())
+    return gzipped
 
 
-def upload(key_name, filepath=TMP_FILEPATH, delete=True):
+def upload(key_name, filepath, delete=True):
     bucket = get_bucket()
     size = os.stat(filepath).st_size
     if size > CHUNK_SIZE:
@@ -56,11 +58,11 @@ def upload(key_name, filepath=TMP_FILEPATH, delete=True):
         size = k.set_contents_from_filename(filepath, encrypt_key=True)
     if delete:
         os.remove(filepath)
-    return key_name, size
+    return size
 
 
-def backup(filepath=TMP_FILEPATH):
-    return upload(compress(filepath))
+def backup(key_name, filename):
+    return upload(key_name, compress(filename))
 
 
 def restore(key, paths=None):
