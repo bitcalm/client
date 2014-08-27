@@ -38,6 +38,7 @@ FS_UPLOAD_PERIOD = 30 * MIN
 FS_SET_PERIOD = 24 * HOUR
 LOG_UPLOAD_PERIOD = 5 * MIN
 CHANGES_CHECK_PERIOD = 10 * MIN
+DB_CHECK_PERIOD = 24 * HOUR
 PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
@@ -114,10 +115,10 @@ def get_db_connection(db):
 
 
 def check_db():
-    if not config.database:
+    if not (config.database or client_status.database):
         return True
     databases = {}
-    for db in config.database:
+    for db in itertools.chain(config.database, client_status.database):
         conn = get_db_connection(db)
         if not conn:
             continue
@@ -365,6 +366,11 @@ def work():
                     Action(CHANGES_CHECK_PERIOD,
                            check_changes,
                            on_schedule_update=on_schedule_update)])
+
+    if config.databases or status.databases:
+        actions.add(OneTimeAction(7 * min, check_db,
+                                  followers=[ActionSeed(DB_CHECK_PERIOD,
+                                                        check_db)]))
     
     if client_status.amazon:
         actions.add(Action(backup.next_date, make_backup))
