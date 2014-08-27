@@ -314,19 +314,6 @@ def work():
             if status == 200:
                 log.info('Crash reported')
                 os.remove(CRASH_PATH)
-    
-    if client_status.backup:
-        status = client_status.backup['status']
-        if os.path.exists(client_status.backup['path']):
-            if status == 'compress':
-                os.remove(client_status.backup['path'])
-                client_status.backup = None
-                client_status.save()
-            elif status == 'uploaded':
-                os.remove(client_status.backup['path'])
-        else:
-            client_status.backup = None
-            client_status.save()
 
     set_fs()
 
