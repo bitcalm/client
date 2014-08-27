@@ -232,6 +232,7 @@ def make_backup():
             for host, dbnames in schedule.databases.iteritems():
                 if ':' in host:
                     host, port = host.split(':')
+                    port = int(port)
                 else:
                     port = DEFAULT_DB_PORT
                 for name in dbnames:
