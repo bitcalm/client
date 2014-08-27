@@ -1,3 +1,4 @@
+MySQL-python==1.2.5
 argparse==1.2.1
 boto==2.28.0
 filechunkio==1.5
