@@ -33,6 +33,8 @@ def get_bucket():
 def compress(filename, gzipped=None):
     if not gzipped:
         gzipped = '/tmp/%s.gz' % os.path.basename(filename)
+    if not os.path.exists(filename):
+        return ''
     with open(filename, 'rb') as f:
         with gzip.open(gzipped, 'wb') as gz:
             gz.write(f.read())
@@ -62,7 +64,8 @@ def upload(key_name, filepath, delete=True):
 
 
 def backup(key_name, filename):
-    return upload(key_name, compress(filename))
+    gzipped = compress(filename)
+    return upload(key_name, gzipped) if gzipped else 0
 
 
 def restore(key, paths=None):
