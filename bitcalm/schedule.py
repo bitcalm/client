@@ -18,6 +18,12 @@ class Schedule(object):
     def get_next(self):
         return datetime.combine(date.today(), self.time)
 
+    def update(self, **kwargs):
+        self.time = time(*kwargs.get('time'))
+        self.files = kwargs.get('files', [])
+        self.databases = kwargs.get('db', [])
+        self.next_backup = self.get_next()
+
     def done(self):
         self.prev_backup = datetime.now()
         self.next_backup = self.get_next()
@@ -34,15 +40,22 @@ class DailySchedule(Schedule):
         next_date = self.prev_backup.date() + timedelta(days=self.period)
         return datetime.combine(next_date, self.time)
 
+    def update(self, **kwargs):
+        self.period = kwargs.pop('day')
+        super(DailySchedule, self).update(**kwargs)
+
 
 class WeeklySchedule(Schedule):
     def __init__(self, **kwargs):
-        days = kwargs.pop('days')
-        self.days = []
+        self.days = self._convert_days(kwargs.pop('days'))
+        super(WeeklySchedule, self).__init__(**kwargs)
+
+    def _convert_days(self, days):
+        d = []
         for i in range(7):
             if days & 1 << i:
-                self.days.append(i)
-        super(WeeklySchedule, self).__init__(**kwargs)
+                d.append(i)
+        return d
 
     def get_next(self):
         today = date.today()
@@ -53,6 +66,10 @@ class WeeklySchedule(Schedule):
         next_day = curr_week[0] if curr_week else self.days[0] + 7
         next_date = today + timedelta(days=next_day-today_index)
         return datetime.combine(next_date, self.time)
+
+    def update(self, **kwargs):
+        self.days = self._convert_days(kwargs.pop('days'))
+        super(WeeklySchedule, self).update(**kwargs)
 
 
 class MonthlySchedule(Schedule):
@@ -69,3 +86,7 @@ class MonthlySchedule(Schedule):
         else:
             day = self.day
         return datetime(year, month, day, self.time.hour, self.time.minute)
+
+    def update(self, **kwargs):
+        self.day = kwargs.pop('day')
+        super(MonthlySchedule, self).update(**kwargs)

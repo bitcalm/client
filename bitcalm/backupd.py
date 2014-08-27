@@ -142,18 +142,24 @@ def check_changes(on_schedule_update=None):
                 setattr(client_status, attr or key, value)
         schedules = content.get('schedules')
         if schedules:
-            ids = []
             types = {'daily': DailySchedule,
                      'weekly': WeeklySchedule,
                      'monthly': MonthlySchedule}
-            for i, s in enumerate(schedules):
-                if 'db' in s:
-                    s['db'] = pickle.loads(s['db'])
-                ids.append(s['id'])
-                schedules[i] = types[s.pop('type')](**s)
-            client_status.schedules = filter(lambda s: s.id not in ids,
-                                             client_status.schedules)
-            client_status.schedules.extend(schedules)
+            curr = {s.id: s for s in client_status.schedules}
+            for s in schedules:
+                cs = curr.get(s['id'])
+                if cs:
+                    if isinstance(cs, types[s['type']]):
+                        cs.update(**s)
+                    else:
+                        ns = types[s.pop('type')](**s)
+                        ns.prev_backup = cs.prev_backup
+                        ns.exclude = cs.exclude
+                        client_status.schedules.remove(cs)
+                        client_status.schedules.append(ns)
+                else:
+                    ns = types[s.pop('type')](**s)
+                    client_status.schedules.append(ns)
             if on_schedule_update:
                 on_schedule_update()
         client_status.save()
