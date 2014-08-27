@@ -356,7 +356,7 @@ def work():
                            on_schedule_update=on_schedule_update)])
 
     if config.database or client_status.database:
-        actions.add(OneTimeAction(7 * min, check_db,
+        actions.add(OneTimeAction(7*MIN, check_db,
                                   followers=[ActionSeed(DB_CHECK_PERIOD,
                                                         check_db)]))
     
