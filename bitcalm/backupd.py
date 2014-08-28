@@ -14,7 +14,6 @@ from datetime import datetime
 from logging import FileHandler
 from threading import Thread
 
-import MySQLdb
 from daemon import DaemonContext
 
 import backup
@@ -24,12 +23,11 @@ from api import api
 from filesystem.base import FSNode, Watcher
 from actions import ActionPool, OneTimeAction, Action, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
-from _mysql_exceptions import OperationalError
+from database import DEFAULT_DB_PORT, get_databases
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
                 'lost+found', 'proc', 'tmp', 'sbin', 'bin')
-DEFAULT_DB_PORT = 3306
 
 MIN = 60
 HOUR = 60 * MIN
@@ -106,28 +104,14 @@ def get_s3_access():
     return False
 
 
-def get_db_connection(db):
-    try:
-        return MySQLdb.connect(**db)
-    except OperationalError, e:
-        log.error("Access denied for user '%s'@'%s' (using password: YES)" % (db['user'], db['host']))
-        return None
-
-
 def check_db():
     if not (config.database or client_status.database):
         return True
     databases = {}
     for db in itertools.chain(config.database, client_status.database):
-        conn = get_db_connection(db)
-        if not conn:
-            continue
-        cur = conn.cursor()
-        cur.execute('SHOW databases')
-        db_names = [row[0] for row in cur.fetchall()]
-        cur.close()
-        conn.close()
-        databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
+        db_names = get_databases(**db)
+        if db_names:
+            databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
     return api.set_databases(databases) == 200
 
 
@@ -176,7 +160,7 @@ def restore(tasks):
     log.info('Start backup restore.')
     complete = []
     for item in tasks:
-        error = backup.restore(item['key'], paths=item.get('items'))
+        error = backup.restore(item.get('backup_id') or item.get('key'))
         if error:
             log.error(error)
             break
@@ -186,7 +170,8 @@ def restore(tasks):
         log.info('All restore tasks are complete.')
     if complete:
         api.restore_complete(complete)
-    return len(tasks) == len(complete)
+        del tasks[:len(complete)]
+    return not tasks
 
 
 def make_backup():

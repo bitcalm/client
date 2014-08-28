@@ -7,7 +7,9 @@ from boto.s3.connection import S3Connection
 from boto.s3.key import Key
 from filechunkio import FileChunkIO
 
+from bitcalm import log
 from bitcalm.config import status
+from bitcalm.database import get_credentials, import_db
 
 
 CHUNK_SIZE = 32 * 1024 * 1024
@@ -41,6 +43,17 @@ def compress(filename, gzipped=None):
     return gzipped
 
 
+def decompress(zipped, unzipped=None, delete=True):
+    if not unzipped:
+        unzipped = zipped[:-3]
+    with gzip.open(zipped, 'rb') as gz:
+        with open(unzipped, 'wb') as f:
+            f.write(gz.read())
+    if delete:
+        os.remove(zipped)
+    return unzipped
+
+
 def upload(key_name, filepath, delete=True):
     bucket = get_bucket()
     size = os.stat(filepath).st_size
@@ -63,12 +76,81 @@ def upload(key_name, filepath, delete=True):
     return size
 
 
+def download(key, path):
+    """ Returns:
+            -1 if key wasn't found;
+            0 on success;
+            number of bytes in key if there is not enough free space for it.
+    """
+    if not isinstance(key, Key):
+        b = get_bucket()
+        k = b.lookup(key)
+        if k:
+            key = k
+        else:
+            return -1
+    if available_space(path=os.path.dirname(path)) < key.size:
+        return key.size
+    key.get_contents_to_filename(path)
+    return 0
+
+
 def backup(key_name, filename):
     gzipped = compress(filename)
     return upload(key_name, gzipped) if gzipped else 0
 
 
-def restore(key, paths=None):
+def restore_gz(backup_id):
+    bucket = get_bucket()
+    prefix = 'backup_%i/' % backup_id
+    keys = bucket.get_all_keys(prefix=prefix)
+    file_prefix  = prefix + 'filesystem/'
+    db_prefix = prefix + 'databases/'
+    file_keys = []
+    db_keys = []
+    for k in keys:
+        if k.key.startswith(file_prefix):
+            file_keys.append(k)
+        elif k.key.startswith(db_prefix):
+            db_keys.append(k)
+
+    for k in file_keys:
+        gzipped = '/tmp/' + os.path.basename(k.key)
+        if download(k, gzipped):
+            return 'Need at least %i bytes free' % k.size
+        filename = k.key[len(file_prefix)-1:-3]
+        with gzip.open(gzipped, 'rb') as gz:
+            with open(filename, 'wb') as f:
+                f.write(gz.read())
+        os.remove(gzipped)
+
+    db_creds = {}
+    for k in db_keys:
+        basename = os.path.basename(k.key)
+        host, port, name = basename.split('_', 3)[:3]
+        port = int(port)
+        db_key = '%s:%i' % (host, port)
+        if db_key not in db_creds:
+            try:
+                db_creds[db_key] = get_credentials(host, port)
+            except ValueError:
+                log.error('There are no credentials for %s:%i' % (host, port))
+                continue
+
+        gzipped = '/tmp/' + basename
+        if download(k, gzipped):
+            return 'Need at least %i bytes free' % k.size
+        filename = decompress(gzipped)
+
+        user, passwd = db_creds[db_key]
+        if import_db(filename, user, host, passwd, port, name):
+            os.remove(filename)
+        else:
+            log.error('Failed to import %s to %s:%i' % (name, host, port))
+    return None
+
+
+def restore_tar(key, paths=None):
     bucket = get_bucket()
     k = bucket.lookup(key)
     if not k:
@@ -109,6 +191,13 @@ def restore(key, paths=None):
     tar.close()
     os.remove(tmp_file)
     return None
+
+
+def restore(key_or_id):
+    if isinstance(key_or_id, int):
+        return restore_gz(key_or_id)
+    else:
+        return restore_tar(key_or_id)
 
 
 def available_space(path='/tmp/'):
