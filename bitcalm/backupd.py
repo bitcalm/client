@@ -131,6 +131,8 @@ def check_changes(on_schedule_update=None):
                      'monthly': MonthlySchedule}
             curr = {s.id: s for s in client_status.schedules}
             for s in schedules:
+                if 'db' in s:
+                    s['db'] = pickle.loads(s['db'])
                 cs = curr.get(s['id'])
                 if cs:
                     if isinstance(cs, types[s['type']]):
