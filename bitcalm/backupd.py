@@ -202,7 +202,8 @@ def make_backup():
                                 'files': filter(os.path.isfile,
                                                 schedule.files)}
             client_status.save()
-        key_prefix = 'backup_%i/filesystem' % backup_id
+        key_prefix = backup.get_prefix(backup_id,
+                                       ptype=backup.PREFIX_TYPE.FS)[:-1]
         make_key = lambda f, p=key_prefix: '%s%s.gz' % (p, f)
         while bstatus['items']['files']:
             filename = bstatus['items']['files'].pop()
@@ -236,7 +237,7 @@ def make_backup():
         for db in itertools.chain(config.database, client_status.database):
             key = make_key(db['host'], db.get('port', DEFAULT_DB_PORT))
             db_creds[key] = (db['user'], db['passwd'])
-        key_prefix = 'backup_%i/databases/' % backup_id
+        key_prefix = backup.get_prefix(backup_id, ptype=backup.PREFIX_TYPE.DB)
         db_success = 0
         db_total = len(bstatus['databases'])
         while bstatus['databases']:

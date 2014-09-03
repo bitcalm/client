@@ -14,6 +14,10 @@ from bitcalm.database import get_credentials, import_db
 
 CHUNK_SIZE = 32 * 1024 * 1024
 
+class PREFIX_TYPE:
+    FS = 'filesystem/'
+    DB = 'databases/'
+
 
 def next_date():
     s = next_schedule()
@@ -30,6 +34,19 @@ def get_bucket():
     conn = S3Connection(status.amazon['key_id'],
                         status.amazon['secret_key'])
     return conn.get_bucket(status.amazon['bucket'])
+
+
+def get_prefix(backup_id, ptype=''):
+    return '/'.join((status.amazon['username'],
+                     'backup_%i' % backup_id,
+                     ptype))
+
+
+def get_prefixes(backup_id):
+    root_prefix = get_prefix(backup_id)
+    return (root_prefix,
+            root_prefix + PREFIX_TYPE.FS,
+            root_prefix + PREFIX_TYPE.DB)
 
 
 def compress(filename, gzipped=None):
@@ -102,10 +119,8 @@ def backup(key_name, filename):
 
 def restore_gz(backup_id):
     bucket = get_bucket()
-    prefix = 'backup_%i/' % backup_id
+    prefix, file_prefix, db_prefix = get_prefixes(backup_id)
     keys = bucket.get_all_keys(prefix=prefix)
-    file_prefix  = prefix + 'filesystem/'
-    db_prefix = prefix + 'databases/'
     file_keys = []
     db_keys = []
     for k in keys:

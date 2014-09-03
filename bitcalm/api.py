@@ -6,6 +6,7 @@ from hashlib import sha512 as sha
 from urllib import urlencode
 
 from config import config, status as client_status
+from bitcalm import __version__
 
 
 def returns_json(func):
@@ -130,6 +131,9 @@ class Api(object):
     def restore_complete(self, tasks):
         return self._send('backup/restore_complete',
                           data={'tasks': ','.join(map(str, tasks))})[0]
+
+    def check_version(self):
+        return self._send('version', data={'v': __version__})
 
 
 api = Api(config.host, config.port, config.uuid, client_status.key)
