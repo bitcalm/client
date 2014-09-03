@@ -162,7 +162,7 @@ def restore(tasks):
     log.info('Start backup restore.')
     complete = []
     for item in tasks:
-        error = backup.restore(item.get('backup_id') or item.get('key'))
+        error = backup.restore(item['backup_id'])
         if error:
             log.error(error)
             break

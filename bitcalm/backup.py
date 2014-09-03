@@ -117,7 +117,7 @@ def backup(key_name, filename):
     return upload(key_name, gzipped) if gzipped else 0
 
 
-def restore_gz(backup_id):
+def restore(backup_id):
     bucket = get_bucket()
     prefix, file_prefix, db_prefix = get_prefixes(backup_id)
     keys = bucket.get_all_keys(prefix=prefix)
@@ -163,56 +163,6 @@ def restore_gz(backup_id):
         else:
             log.error('Failed to import %s to %s:%i' % (name, host, port))
     return None
-
-
-def restore_tar(key, paths=None):
-    bucket = get_bucket()
-    k = bucket.lookup(key)
-    if not k:
-        return 'There is no key "%s" in the bucket' % key
-
-    tmp = '/tmp/'
-    if available_space() < k.size:
-        return 'Not enough available space in %s' % tmp
-
-    tmp_file = tmp + key
-    k.get_contents_to_filename(tmp_file)
-    tar = tarfile.open(tmp_file, 'r:gz')
-    if paths:
-        def contains(path, member):
-            path, member = map(lambda p: filter(None, p.split('/')),
-                               (path, member.name))
-            if len(path) > len(member):
-                return False
-            for p_node, m_node in zip(path, member):
-                if p_node != m_node:
-                    return False
-            return True
-
-        def contained(member, paths):
-            for path in paths:
-                if contains(path, member):
-                    return True
-            return False
-
-        members = filter(lambda m, paths=paths: contained(m, paths),
-                         tar.getmembers())
-        if not members:
-            os.remove(tmp_file)
-            return 'Paths not found in the backup'
-    else:
-        members = None
-    tar.extractall(path='/', members=members)
-    tar.close()
-    os.remove(tmp_file)
-    return None
-
-
-def restore(key_or_id):
-    if isinstance(key_or_id, int):
-        return restore_gz(key_or_id)
-    else:
-        return restore_tar(key_or_id)
 
 
 def available_space(path='/tmp/'):
