@@ -6,8 +6,6 @@ import pickle
 import time
 import platform
 import itertools
-import subprocess
-import gzip
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime
@@ -23,7 +21,7 @@ from api import api
 from filesystem.base import FSNode, Watcher
 from actions import ActionPool, OneTimeAction, Action, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
-from database import DEFAULT_DB_PORT, get_databases
+from database import DEFAULT_DB_PORT, get_databases, dump_db
 
 
 IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
@@ -251,17 +249,11 @@ def make_backup():
             ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
             filename = '%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
             path = '/tmp/' + filename
-            dump = subprocess.Popen(('mysqldump',
-                                     '-u', user,
-                                     '-p%s' % passwd,
-                                     name),
-                                    stdout=subprocess.PIPE)
-            if dump.poll():
+            if not dump_db(name, host, user,
+                           path=path, passwd=passwd, port=port):
                 log.error('Dump of %s from %s:%i failed' % (name, host, port))
                 client_status.save()
                 continue
-            with gzip.open(path, 'wb') as f:
-                f.write(dump.stdout.read())
             bstatus['size'] += backup.upload(os.path.join(key_prefix,
                                                           filename),
                                              path)
