@@ -1,7 +1,7 @@
 import json
 import zlib
 from random import random
-from httplib import HTTPSConnection
+from httplib import HTTPSConnection, HTTPConnection
 from hashlib import sha512 as sha
 from urllib import urlencode
 
@@ -20,9 +20,10 @@ def returns_json(func):
 
 class Api(object):
     BOUNDARY = '-' * 20 + sha(str(random())).hexdigest()[:20]
-    
+
     def __init__(self, host, port, uuid, key):
-        self.conn = HTTPSConnection(host, port)
+        conn_cls = HTTPSConnection if config.https else HTTPConnection
+        self.conn = conn_cls(host, port)
         self.base_params = {'uuid': uuid, 'key': key}
     
     def _send(self, path, data={}, files={}, method='POST'):

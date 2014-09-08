@@ -12,11 +12,12 @@ class Config:
     DEFAULT_CONF = '/etc/bitcalm.conf'
     COMMENT_SYMBOL = '#'
     REQUIRED = ('uuid',)
-    ALLOWED = ('uuid', 'host', 'port', 'database')
+    ALLOWED = ('uuid', 'host', 'port', 'database', 'https')
     VALIDATOR = {'uuid': re.compile('^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'),
                  'database': DB_RE}
     ENTRY = {'host': {'default': 'bitcalm.com'},
              'port': {'default': 443, 'type': int},
+             'https': {'default': 1, 'type': int},
              'database': {'default': [], 'multiple': True}}
     
     @staticmethod
