@@ -4,8 +4,11 @@ import sys
 import signal
 import pickle
 import time
+import urllib2
+import tarfile
 import platform
 import itertools
+import subprocess
 from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
 from datetime import datetime
@@ -14,8 +17,9 @@ from threading import Thread
 
 from daemon import DaemonContext
 
-import backup
 import log
+import backup
+import bitcalm
 from config import config, status as client_status
 from api import api
 from filesystem.base import FSNode, Watcher
@@ -113,9 +117,34 @@ def check_db():
     return api.set_databases(databases) == 200
 
 
+def update(url):
+    filename = os.path.join('/tmp', os.path.basename(url))
+    with open(filename, 'wb') as f:
+        f.write(urllib2.urlopen(url).read())
+    try:
+        import pip
+    except ImportError:
+        dst = '/tmp/bitcalm'
+        with tarfile.open(filename) as tar:
+            tar.extractall(dst)
+        subprocess.check_call(('python2.7', 'setup.py', 'install'), cwd=dst)
+    else:
+        pip.main(['uninstall', '-qy', 'bitcalm'])
+        pip.main(['install', '-q', filename])
+    subprocess.Popen(('bitcalm', 'restart'))
+    return True
+
+
 def check_changes(on_schedule_update=None):
     status, content = api.get_changes()
     if status == 200:
+        version = content.get('version')
+        if version:
+            ver, url = version
+            if ver != bitcalm.__version__:
+                url = 'http://%s%s' % (config.host, url)
+                actions.add(OneTimeAction(0, update, url))
+                return True
         to_status = (('access', 'amazon'),
                      ('db', 'database'))
         for key, attr in to_status:
