@@ -118,7 +118,7 @@ def check_db():
 
 def update(url):
     if url.startswith('/'):
-        url = 'http://%s:%i%s' % (config.host, config.port, url)
+        url = 'http://%s%s' % (config.host, url)
     filename = os.path.join('/tmp', os.path.basename(url))
     with open(filename, 'wb') as f:
         f.write(urllib2.urlopen(url).read())
