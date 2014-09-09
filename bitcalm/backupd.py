@@ -412,14 +412,13 @@ def work():
 
 def run():
     log.info('Checking updates')
+    url = None
     if client_status.is_registered:
         status, url = api.check_version()
     else:
         status, content = api.get_version()
-        if status == 200:
-            ver, url = content
-            if bitcalm.__version__ == ver:
-                url = None
+        if status == 200 and bitcalm.__version__ == content[0]:
+            url = content[1]
     if status != 500:
         client_status.last_ver_check = datetime.now()
         client_status.save()
