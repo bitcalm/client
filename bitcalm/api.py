@@ -74,7 +74,9 @@ class Api(object):
         return crlf.join(result)
     
     def hi(self, uname):
-        return self._send('hi', {'host': uname[1], 'uname': ' '.join(uname)})
+        return self._send('hi', {'host': uname[1],
+                                 'uname': ' '.join(uname),
+                                 'v': __version__})
     
     def set_fs(self, fs):
         return self._send('fs/set', files={'fs': zlib.compress(fs, 9)})
