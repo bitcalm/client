@@ -6,7 +6,6 @@ import pickle
 import time
 import urllib2
 import tarfile
-import platform
 import itertools
 import subprocess
 from hashlib import sha256 as sha
@@ -427,10 +426,10 @@ def run():
         update(url)
         exit()
         
+    print 'Sending info about the client...'
+    status, content = api.hi()
+    print content
     if not client_status.is_registered:
-        print 'Sending info about new client...'
-        status, content = api.hi(platform.uname())
-        print content
         if status == 200:
             client_status.is_registered = True
             client_status.save()

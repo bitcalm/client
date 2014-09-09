@@ -1,5 +1,6 @@
 import json
 import zlib
+import platform
 from random import random
 from httplib import HTTPSConnection, HTTPConnection
 from hashlib import sha512 as sha
@@ -73,7 +74,8 @@ class Api(object):
         result.append('%s--\r\n' % boundary)
         return crlf.join(result)
     
-    def hi(self, uname):
+    def hi(self):
+        uname = platform.uname()
         return self._send('hi', {'host': uname[1],
                                  'uname': ' '.join(uname),
                                  'v': __version__})
