@@ -1,6 +1,7 @@
 import re
 import pickle
 from uuid import uuid1
+from datetime import datetime, timedelta
 
 from .exceptions import ConfigEntryError, ConfigSyntaxError
 
@@ -95,7 +96,8 @@ class Status(object):
                'schedules',
                'database',
                'backup',
-               'amazon')
+               'amazon',
+               'last_ver_check')
     DEFAULT = {'schedules': [],
                'database': []}
     
@@ -125,6 +127,11 @@ class Status(object):
             if s.files:
                 return True
         return False
+
+    def is_actual_version(self):
+        if not self.last_ver_check:
+            return False
+        return self.last_ver_check + timedelta(minutes=10) > datetime.now()
 
     def save(self):
         with open(self.path, 'w') as f:

@@ -118,6 +118,8 @@ def check_db():
 
 
 def update(url):
+    if url.startswith('/'):
+        url = 'http://%s:%i%s' % (config.host, config.port, url)
     filename = os.path.join('/tmp', os.path.basename(url))
     with open(filename, 'wb') as f:
         f.write(urllib2.urlopen(url).read())
@@ -135,6 +137,18 @@ def update(url):
     return True
 
 
+def check_update():
+    status, url = api.check_version()
+    if status in (200, 304):
+        client_status.last_ver_check = datetime.now()
+        client_status.save()
+        if status == 200:
+            log.info('Start client update')
+            update(url)
+        return True
+    return False
+
+
 def check_changes(on_schedule_update=None):
     status, content = api.get_changes()
     if status == 200:
@@ -142,8 +156,8 @@ def check_changes(on_schedule_update=None):
         if version:
             ver, url = version
             if ver != bitcalm.__version__:
-                url = 'http://%s%s' % (config.host, url)
                 actions.add(OneTimeAction(0, update, url))
+                log.info('Planned update to %s' % ver)
                 return True
         to_status = (('access', 'amazon'),
                      ('db', 'database'))
@@ -320,6 +334,8 @@ def immortal(func):
 
 @immortal
 def work():
+    if not client_status.is_actual_version():
+        check_update()
     if os.path.exists(CRASH_PATH):
         crash = os.stat(CRASH_PATH)
         if crash.st_size:
@@ -395,6 +411,23 @@ def work():
 
 
 def run():
+    log.info('Checking updates')
+    if client_status.is_registered:
+        status, url = api.check_version()
+    else:
+        status, content = api.get_version()
+        if status == 200:
+            ver, url = content
+            if bitcalm.__version__ == ver:
+                url = None
+    if status != 500:
+        client_status.last_ver_check = datetime.now()
+        client_status.save()
+    if url:
+        log.info('Start client update')
+        update(url)
+        exit()
+        
     if not client_status.is_registered:
         print 'Sending info about new client...'
         status, content = api.hi(platform.uname())
@@ -418,6 +451,9 @@ def run():
 
 
 def stop():
+    if not os.path.exists(PIDFILE_PATH):
+        print 'Bitcalm is not running'
+        return
     with open(PIDFILE_PATH, 'r') as f:
         pid = int(f.read().strip())
     try:

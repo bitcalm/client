@@ -136,5 +136,9 @@ class Api(object):
     def check_version(self):
         return self._send('version', data={'v': __version__})
 
+    @returns_json
+    def get_version(self):
+        return self._send('version/current', method='GET')
+
 
 api = Api(config.host, config.port, config.uuid, client_status.key)
