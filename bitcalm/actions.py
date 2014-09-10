@@ -37,6 +37,9 @@ class ActionPool(object):
                 return action
         return None
 
+    def has(self, func_or_tag):
+        return bool(self.get(func_or_tag))
+
     def next(self):
         if self._actions:
             return min(filter(lambda a: bool(a.time), self._actions))
