@@ -158,12 +158,17 @@ def check_changes(on_schedule_update=None):
                 actions.add(OneTimeAction(0, update, url))
                 log.info('Planned update to %s' % ver)
                 return True
-        to_status = (('access', 'amazon'),
-                     ('db', 'database'))
-        for key, attr in to_status:
-            value = content.get(key)
-            if value:
-                setattr(client_status, attr or key, value)
+
+        access = content.get('access')
+        if access:
+            client_status.amazon = access
+
+        db = content.get('db')
+        if db:
+            client_status.database = db
+            if not actions.has(check_db):
+                actions.add(Action(DB_CHECK_PERIOD, check_db, start=0))
+
         schedules = content.get('schedules')
         if schedules:
             types = {'daily': DailySchedule,
@@ -386,9 +391,7 @@ def work():
                            on_schedule_update=on_schedule_update)])
 
     if config.database or client_status.database:
-        actions.add(OneTimeAction(7*MIN, check_db,
-                                  followers=[ActionSeed(DB_CHECK_PERIOD,
-                                                        check_db)]))
+        actions.add(Action(DB_CHECK_PERIOD, check_db, start=7*MIN))
     
     if client_status.amazon:
         actions.add(Action(backup.next_date, make_backup))
