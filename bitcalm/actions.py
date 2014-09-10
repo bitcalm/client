@@ -58,7 +58,11 @@ class Action(object):
         else:
             self._period = nexttime
             self._next = self._default_next
-        self.next()
+        start = kwargs.pop('start', None)
+        if start is None:
+            self.next()
+        else:
+            self.time = datetime.utcnow() + timedelta(seconds=start)
         self._args = args
         self._kwargs = kwargs
     
