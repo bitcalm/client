@@ -21,7 +21,7 @@ import backup
 import bitcalm
 from config import config, status as client_status
 from api import api
-from filesystem.base import FSNode, Watcher
+from filesystem.base import FSNode
 from actions import ActionPool, OneTimeAction, Action, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
 from database import DEFAULT_DB_PORT, get_databases, dump_db
@@ -33,7 +33,6 @@ IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
 MIN = 60
 HOUR = 60 * MIN
 
-FS_UPLOAD_PERIOD = 30 * MIN
 FS_SET_PERIOD = 24 * HOUR
 LOG_UPLOAD_PERIOD = 5 * MIN
 CHANGES_CHECK_PERIOD = 10 * MIN
@@ -42,13 +41,10 @@ PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
 
-fs_watcher = None
 actions = ActionPool()
 
 
 def on_stop(signum, frame):
-    if fs_watcher:
-        fs_watcher.stop()
     log.info('Terminated process with pid %i' % os.getpid())
     raise SystemExit()
 
@@ -72,17 +68,6 @@ def set_fs():
             return False
     log.info('Filesystem has not changed')
     return True
-
-
-def upload_fs(changelog):
-    if not changelog:
-        return True
-    current = list(changelog)
-    status = api.update_fs(current)[0]
-    if status == 200:
-        del changelog[:len(current)]
-        return True
-    return False
 
 
 def upload_log(entries=log.upload):
@@ -148,7 +133,7 @@ def check_update():
     return False
 
 
-def check_changes(on_schedule_update=None):
+def check_changes():
     status, content = api.get_changes()
     if status == 200:
         version = content.get('version')
@@ -191,8 +176,11 @@ def check_changes(on_schedule_update=None):
                 else:
                     ns = types[s.pop('type')](**s)
                     client_status.schedules.append(ns)
-            if on_schedule_update:
-                on_schedule_update()
+            b = actions.get(make_backup)
+            if b:
+                b.next()
+            else:
+                actions.add(Action(backup.next_date, make_backup))
         client_status.save()
         tasks = content.get('restore')
         if tasks:
@@ -352,43 +340,10 @@ def work():
 
     set_fs()
 
-    def update_watcher(files=None):
-        if not files:
-            files = client_status.get_files()
-        global fs_watcher
-        if not fs_watcher:
-            log.info('Create watch manager')
-            fs_watcher = Watcher()
-            log.info('Start watching filesystem')
-            fs_watcher.start()
-        fs_watcher.set_paths(files)
-        if not actions.get(upload_fs):
-            actions.add(Action(FS_UPLOAD_PERIOD,
-                               upload_fs,
-                               fs_watcher.changelog))
-
-    def on_schedule_update():
-        files = client_status.get_files()
-        if files:
-            update_watcher(files)
-        else:
-            global fs_watcher
-            if fs_watcher:
-                fs_watcher.stop()
-                fs_watcher = None
-            if actions.get(upload_fs):
-                actions.remove(upload_fs)
-        b = actions.get(make_backup)
-        if b:
-            b.next()
-        else:
-            actions.add(Action(backup.next_date, make_backup))
-
     actions.extend([Action(LOG_UPLOAD_PERIOD, upload_log),
                     Action(FS_SET_PERIOD, set_fs),
                     Action(CHANGES_CHECK_PERIOD,
-                           check_changes,
-                           on_schedule_update=on_schedule_update)])
+                           check_changes)])
 
     if config.database or client_status.database:
         actions.add(Action(DB_CHECK_PERIOD, check_db, start=7*MIN))
@@ -400,9 +355,6 @@ def work():
                                   get_s3_access,
                                   followers=[ActionSeed(backup.next_date,
                                                         make_backup)]))
-    
-    if client_status.has_files():
-        update_watcher()
 
     log.info('Start main loop')
     while True:

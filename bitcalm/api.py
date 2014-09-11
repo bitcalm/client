@@ -83,10 +83,6 @@ class Api(object):
     def set_fs(self, fs):
         return self._send('fs/set', files={'fs': zlib.compress(fs, 9)})
     
-    def update_fs(self, changes):
-        changes = zlib.compress(json.dumps(changes), 9)
-        return self._send('fs/update', files={'changes': changes})
-    
     def upload_log(self, entries):
         if len(entries) > 1:
             kwargs = {'files': {'entries': zlib.compress(';'.join(entries), 9)}}
