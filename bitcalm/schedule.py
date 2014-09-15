@@ -25,7 +25,7 @@ class Schedule(object):
         self.next_backup = self.get_next()
 
     def done(self):
-        self.prev_backup = datetime.now()
+        self.prev_backup = datetime.utcnow()
         self.next_backup = self.get_next()
 
 
