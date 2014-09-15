@@ -8,9 +8,8 @@ import urllib2
 import tarfile
 import itertools
 import subprocess
-from hashlib import sha256 as sha
 from lockfile.pidlockfile import PIDLockFile
-from datetime import datetime
+from datetime import datetime, timedelta
 from logging import FileHandler
 from threading import Thread
 
@@ -21,8 +20,8 @@ import backup
 import bitcalm
 from config import config, status as client_status
 from api import api
-from filesystem.base import FSNode
-from actions import ActionPool, OneTimeAction, Action, ActionSeed
+from filesystem.utils import levelwalk
+from actions import ActionPool, OneTimeAction, Action, StepAction, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
 from database import DEFAULT_DB_PORT, get_databases, dump_db
 
@@ -49,25 +48,36 @@ def on_stop(signum, frame):
     raise SystemExit()
 
 
-def set_fs():
-    log.info('Update filesystem image')
-    basepath = '/'
-    root = FSNode(basepath, ignore=IGNORE_PATHS)
-    root_dict = root.as_dict()
-    root_dump = pickle.dumps(root_dict)
-    h = sha(root_dump).hexdigest()
-    if not client_status.fshash or client_status.fshash != h:
-        status = api.set_fs(root_dump)[0]
-        if status == 200:
-            client_status.fshash = h
+def set_fs(depth=-1, step_time=2*MIN, top='/', action='start'):
+    till = datetime.utcnow() + timedelta(seconds=step_time)
+    levels = []
+    dir_suffix = lambda p: p + '/' if os.path.isdir(p) else p
+    for level, has_next in levelwalk(depth=depth, top=top):
+        levels.append(map(dir_suffix, level))
+        if datetime.utcnow() > till and has_next:
+            break
+    status = api.update_fs(levels, action, has_next=has_next)
+    if status == 200:
+        if has_next:
+            client_status.upload_dirs = [filter(os.path.isdir, levels[-1]),
+                                         depth - len(levels)]
             client_status.save()
-            log.info('Filesystem image updated')
-            return True
+            return -1
         else:
-            log.error('Filesystem image update failed')
-            return False
-    log.info('Filesystem has not changed')
-    return True
+            client_status.upload_dirs = []
+            client_status.last_fs_upload = datetime.utcnow()
+            client_status.save()
+        return 1
+    return 0
+
+
+def update_fs(depth=-1, step_time=2*MIN):
+    if client_status.upload_dirs:
+        kwargs = {'action': 'append'}
+        kwargs['top'], depth = client_status.upload_dirs
+    else:
+        kwargs = {}
+    return set_fs(depth=depth, step_time=step_time, **kwargs)
 
 
 def upload_log(entries=log.upload):
@@ -338,12 +348,15 @@ def work():
                 log.info('Crash reported')
                 os.remove(CRASH_PATH)
 
-    set_fs()
-
+    actions.clear()
+    if client_status.last_fs_upload:
+        next_upload = client_status.last_fs_upload + timedelta(FS_SET_PERIOD)
+        till_next = max(0, (next_upload - datetime.utcnow()).total_seconds())
+    else:
+        till_next = 0
+    actions.add(StepAction(FS_SET_PERIOD, update_fs, start=till_next))
     actions.extend([Action(LOG_UPLOAD_PERIOD, upload_log),
-                    Action(FS_SET_PERIOD, set_fs),
-                    Action(CHANGES_CHECK_PERIOD,
-                           check_changes)])
+                    Action(CHANGES_CHECK_PERIOD, check_changes)])
 
     if config.database or client_status.database:
         actions.add(Action(DB_CHECK_PERIOD, check_db, start=7*MIN))

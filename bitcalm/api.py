@@ -1,5 +1,6 @@
 import json
 import zlib
+import pickle
 import platform
 from random import random
 from httplib import HTTPSConnection, HTTPConnection
@@ -82,6 +83,16 @@ class Api(object):
     
     def set_fs(self, fs):
         return self._send('fs/set', files={'fs': zlib.compress(fs, 9)})
+
+    def update_fs(self, levels, action, has_next):
+        allowed = ('start', 'append')
+        if action not in allowed:
+            msg = 'Wrong action: %s. Allowed actions are: %s.' % (action, ', '.join(allowed))
+            raise ValueError(msg)
+        levels = zlib.compress(pickle.dumps(levels), 9)
+        return self._send('fs/%s' % action,
+                          data={'wait_more': int(has_next)},
+                          files={'levels': levels})[0]
     
     def upload_log(self, entries):
         if len(entries) > 1:

@@ -92,14 +92,16 @@ class Config:
 class Status(object):
     OPTIONS = ('key',
                'is_registered',
-               'fshash',
                'schedules',
                'database',
                'backup',
                'amazon',
-               'last_ver_check')
+               'last_ver_check',
+               'upload_dirs',
+               'last_fs_upload')
     DEFAULT = {'schedules': [],
-               'database': []}
+               'database': [],
+               'upload_dirs': []}
     
     def __init__(self, path, **kwargs):
         self.path = path
