@@ -28,6 +28,12 @@ class ActionPool(object):
         self._actions.remove(action)
         action.pool = None
 
+    def clear(self):
+        if self._actions:
+            for a in self._actions:
+                a.pool = None
+            self._actions = []
+
     def get(self, func_or_tag):
         """ Returns action identified by it's function or tag
         """
