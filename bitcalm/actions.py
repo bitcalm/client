@@ -141,6 +141,26 @@ class OneTimeAction(Action):
             self.next()
 
 
+class StepAction(Action):
+    def __init__(self, nexttime, func, *args, **kwargs):
+        self.step = kwargs.pop('step', 600)
+        super(StepAction, self).__init__(nexttime, func, *args, **kwargs)
+
+    def __call__(self):
+        log.info('Perform action: %s' % self._func)
+        result = self._func(*self._args, **self._kwargs)
+        self.lastexectime = datetime.utcnow()
+        if result == -1:
+            self.time = datetime.utcnow() + timedelta(seconds=self.step)
+            log.info('Step of action %s is complete' % self._func)
+        elif result == 1:
+            self.next()
+            log.info('Action %s is complete' % self._func)
+        else:
+            self.delay()
+            log.error('Action %s failed' % self._func)
+
+
 class ActionSeed(object):
     def __init__(self, *args, **kwargs):
         self.cls = kwargs.pop('cls', Action)
