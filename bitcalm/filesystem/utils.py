@@ -3,34 +3,30 @@ import os
 
 def ls(path):
     if not os.path.isdir(path):
-        return []
+        return (), ()
     try:
-        c = os.listdir(path)
+        children = os.listdir(path)
     except OSError:
-        return []
-    else:
-        return [os.path.join(path, item) for item in c]
+        return (), ()
+    dirs = []
+    others = []
+    for c in children:
+        (dirs if os.path.isdir(os.path.join(path, c)) else others).append(c)
+    return dirs, others
 
 
-def children(paths):
-    result = []
-    for path in paths:
-        result.extend(ls(path))
-    return result
-
-
-def levelwalk(top='/', depth=-1):
-    if not isinstance(top, list):
-        top = [top]
-    if len(top) > 1:
-        level = lambda p: len(filter(None, p.split('/')))
-        lvl = level(top[0])
-        for p in top[1:]:
-            if level(p) != lvl:
-                raise ValueError('Paths must be of one level depth')
-    paths = top
-    while paths and depth:
-        c = children(paths)
-        paths = filter(os.path.isdir, c)
+def levelwalk(top='/', depth=-1, start=None):
+    items = start or [(os.path.dirname(top), [os.path.basename(top)])]
+    while items and depth:
+        next_items = []
+        level = []
+        for parent, dirs in items:
+            for d in dirs:
+                path = os.path.join(parent, d)
+                cdirs, cfiles = ls(path)
+                if cdirs:
+                    next_items.append((path, cdirs))
+                level.append((path, cdirs, cfiles))
         depth -= 1
-        yield c, bool(paths and depth)
+        yield level, bool(next_items and depth)
+        items = next_items

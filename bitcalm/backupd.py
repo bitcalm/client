@@ -48,33 +48,30 @@ def on_stop(signum, frame):
     raise SystemExit()
 
 
-def set_fs(depth=-1, step_time=2*MIN, top='/', action='start'):
+def set_fs(depth=-1, step_time=2*MIN, top='/', action='start', start=None):
     till = datetime.utcnow() + timedelta(seconds=step_time)
-    levels = []
-    dir_suffix = lambda p: p + '/' if os.path.isdir(p) else p
-    for level, has_next in levelwalk(depth=depth, top=top):
-        levels.append(map(dir_suffix, level))
-        if datetime.utcnow() > till and has_next:
-            break
-    status = api.update_fs(levels, action, has_next=has_next)
-    if status == 200:
-        if has_next:
-            client_status.upload_dirs = [filter(os.path.isdir, levels[-1]),
-                                         depth - len(levels)]
+    for level, has_next in levelwalk(depth=depth, top=top, start=start):
+        status = api.update_fs([level], action, has_next=has_next)
+        depth -= 1
+        if status == 200:
+            if has_next:
+                client_status.upload_dirs = [[p[:2] for p in level if p[1]],
+                                             depth]
+            else:
+                client_status.upload_dirs = []
+                client_status.last_fs_upload = datetime.utcnow()
             client_status.save()
-            return -1
         else:
-            client_status.upload_dirs = []
-            client_status.last_fs_upload = datetime.utcnow()
-            client_status.save()
-        return 1
-    return 0
-
+            return 0
+        if datetime.utcnow() > till and has_next:
+            return -1
+        action = 'append'
+    return 1
 
 def update_fs(depth=-1, step_time=2*MIN):
     if client_status.upload_dirs:
         kwargs = {'action': 'append'}
-        kwargs['top'], depth = client_status.upload_dirs
+        kwargs['start'], depth = client_status.upload_dirs
     else:
         kwargs = {}
     return set_fs(depth=depth, step_time=step_time, **kwargs)
