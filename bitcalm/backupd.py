@@ -26,9 +26,6 @@ from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
 from database import DEFAULT_DB_PORT, get_databases, dump_db
 
 
-IGNORE_PATHS = ('sys', 'dev', 'root', 'cdrom', 'boot',
-                'lost+found', 'proc', 'tmp', 'sbin', 'bin')
-
 MIN = 60
 HOUR = 60 * MIN
 
