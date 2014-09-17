@@ -410,21 +410,45 @@ def run():
         work()
 
 
+def get_pid():
+    if os.path.exists(PIDFILE_PATH):
+        with open(PIDFILE_PATH, 'r') as f:
+            pid = f.read().strip()
+        try:
+            pid = int(pid)
+        except ValueError:
+            os.remove(PIDFILE_PATH)
+            return None
+        else:
+            return pid
+    else:
+        return None
+
+
+def start():
+    pid = get_pid()
+    if pid:
+        print 'Bitcalm is running, pid %i' % pid
+    else:
+        run()
+
+
 def stop():
-    if not os.path.exists(PIDFILE_PATH):
+    pid = get_pid()
+    if not pid:
         print 'Bitcalm is not running'
-        return
-    with open(PIDFILE_PATH, 'r') as f:
-        pid = int(f.read().strip())
+        return True
     try:
         os.kill(pid, signal.SIGTERM)
     except OSError, e:
         print 'Failed to terminate %(pid)i: %(e)s' % vars()
+        return False
+    return True
 
 
 def restart():
-    stop()
-    run()
+    if stop():
+        run()
 
 
 def usage():
@@ -436,7 +460,7 @@ def main():
         exit('Please upgrade your python to 2.7 or newer')
     if len(sys.argv) != 2:
         usage()
-    actions = {'start': run,
+    actions = {'start': start,
                'stop': stop,
                'restart': restart}
     func = actions.get(sys.argv[1], usage)
