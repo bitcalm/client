@@ -1,0 +1,4 @@
+To create properly named archive use this command:
+
+filename=bitcalm-`python -c 'from bitcalm import __version__;print __version__'`.tar && git archive --format=tar -o ./$filename HEAD && 
+gzip $filename
