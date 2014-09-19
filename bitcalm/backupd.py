@@ -378,7 +378,7 @@ def run():
         status, url = api.check_version()
     else:
         status, content = api.get_version()
-        if status == 200 and bitcalm.__version__ == content[0]:
+        if status == 200 and bitcalm.__version__ != content[0]:
             url = content[1]
     if status != 500:
         client_status.last_ver_check = datetime.now()
