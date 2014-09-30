@@ -264,8 +264,12 @@ def make_backup():
             files = modified(files, client_status.backupdb)
 
         for filename in files:
+            try:
+                key = make_key(filename)
+            except UnicodeDecodeError:
+                continue
             info = os.stat(filename)
-            bstatus['size'] += backup.backup(make_key(filename), filename)
+            bstatus['size'] += backup.backup(key, filename)
             row = (filename, info.st_mtime, info.st_size, backup_id)
             client_status.backupdb.add((row,))
             bstatus['bfiles'].append(row[:-1])
