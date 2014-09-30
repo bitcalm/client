@@ -1,7 +1,6 @@
 import os
 import math
 import gzip
-import tarfile
 
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -14,6 +13,7 @@ from bitcalm.database import get_credentials, import_db
 
 
 CHUNK_SIZE = 32 * 1024 * 1024
+MB = 1024 * 1024
 
 class PREFIX_TYPE:
     FS = 'filesystem/'
@@ -54,6 +54,13 @@ def make_key(prefix, path):
     return '%s%s.gz' % (prefix, path.lstrip('/'))
 
 
+def chunks(fileobj, chunk_size=4*MB):
+    chunk = fileobj.read(chunk_size)
+    while chunk:
+        yield chunk
+        chunk = fileobj.read(chunk_size)
+
+
 def compress(filename, gzipped=None):
     if not gzipped:
         gzipped = '/tmp/%s.gz' % os.path.basename(filename)
@@ -61,7 +68,8 @@ def compress(filename, gzipped=None):
         return ''
     with open(filename, 'rb') as f:
         with gzip.open(gzipped, 'wb') as gz:
-            gz.write(f.read())
+            for chunk in chunks(f):
+                gz.write(chunk)
     return gzipped
 
 
@@ -73,7 +81,8 @@ def decompress(zipped, unzipped=None, delete=True):
         os.makedirs(dirname)
     with gzip.open(zipped, 'rb') as gz:
         with open(unzipped, 'wb') as f:
-            f.write(gz.read())
+            for chunk in chunks(gz):
+                f.write(chunk)
     if delete:
         os.remove(zipped)
     return unzipped
