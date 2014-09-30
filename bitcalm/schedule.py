@@ -1,5 +1,8 @@
+import os
 import calendar
 from datetime import datetime, date, time, timedelta
+
+from bitcalm.filesystem.utils import IGNORE_DIRS
 
 
 class Schedule(object):
@@ -7,6 +10,7 @@ class Schedule(object):
         self.id = kwargs.get('id')
         self.time = time(*kwargs.get('time'))
         self.files = kwargs.get('files', [])
+        self.clean_files()
         self.databases = kwargs.get('db', [])
         self.prev_backup = None
         self.next_backup = self.get_next()
@@ -18,9 +22,19 @@ class Schedule(object):
     def get_next(self):
         return datetime.combine(date.today(), self.time)
 
+    def clean_files(self):
+        self.files = set(self.files)
+        if '/' in self.files:
+            self.files.remove('/')
+            root = os.listdir('/')
+            for item in root:
+                if item not in IGNORE_DIRS:
+                    self.files.add(os.path.join('/', item))
+
     def update(self, **kwargs):
         self.time = time(*kwargs.get('time'))
         self.files = kwargs.get('files', [])
+        self.clean_files()
         self.databases = kwargs.get('db', [])
         self.next_backup = self.get_next()
 
