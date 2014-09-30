@@ -8,6 +8,7 @@ from boto.s3.key import Key
 from filechunkio import FileChunkIO
 
 from bitcalm import log
+from bitcalm.api import api
 from bitcalm.config import status
 from bitcalm.database import get_credentials, import_db
 
@@ -49,6 +50,10 @@ def get_prefixes(backup_id):
             root_prefix + PREFIX_TYPE.DB)
 
 
+def make_key(prefix, path):
+    return '%s%s.gz' % (prefix, path.lstrip('/'))
+
+
 def compress(filename, gzipped=None):
     if not gzipped:
         gzipped = '/tmp/%s.gz' % os.path.basename(filename)
@@ -63,6 +68,9 @@ def compress(filename, gzipped=None):
 def decompress(zipped, unzipped=None, delete=True):
     if not unzipped:
         unzipped = zipped[:-3]
+    dirname = os.path.dirname(unzipped)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
     with gzip.open(zipped, 'rb') as gz:
         with open(unzipped, 'wb') as f:
             f.write(gz.read())
@@ -119,26 +127,30 @@ def backup(key_name, filename):
 
 def restore(backup_id):
     bucket = get_bucket()
-    prefix, file_prefix, db_prefix = get_prefixes(backup_id)
-    keys = bucket.get_all_keys(prefix=prefix)
-    file_keys = []
-    db_keys = []
-    for k in keys:
-        if k.key.startswith(file_prefix):
-            file_keys.append(k)
-        elif k.key.startswith(db_prefix):
-            db_keys.append(k)
+    files = status.backupdb.files(backup_id)
+    if not files:
+        s, files = api.get_files_info(backup_id)
+        if s == 200:
+            files = files.items()
+        else:
+            return 'Failed to request the list of files'
+    backup_prefixes = {}
+    while files:
+        path, b_id = files.pop()
+        prefix = backup_prefixes.get(b_id)
+        if not prefix:
+            prefix = get_prefix(b_id, ptype=PREFIX_TYPE.FS)
+            backup_prefixes[b_id] = prefix
+        key = bucket.get_key(make_key(prefix, path))
+        if not key:
+            continue
+        gzipped = '/tmp' + os.path.basename(path)
+        if download(key, gzipped):
+            return 'Need at least %i bytes free' % key.size
+        decompress(gzipped, path)
 
-    for k in file_keys:
-        gzipped = '/tmp/' + os.path.basename(k.key)
-        if download(k, gzipped):
-            return 'Need at least %i bytes free' % k.size
-        filename = k.key[len(file_prefix)-1:-3]
-        with gzip.open(gzipped, 'rb') as gz:
-            with open(filename, 'wb') as f:
-                f.write(gz.read())
-        os.remove(gzipped)
-
+    prefix = get_prefix(backup_id, ptype=PREFIX_TYPE.DB)
+    db_keys = bucket.get_all_keys(prefix=prefix)
     db_creds = {}
     for k in db_keys:
         basename = os.path.basename(k.key)

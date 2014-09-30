@@ -66,3 +66,31 @@ def levelwalk(top='/', depth=-1, start=None):
         depth -= 1
         yield level, bool(next_items and depth)
         items = next_items
+
+
+def iterfiles(files=None, dirs=None):
+    files = files or []
+    dirs = dirs or []
+    while files or dirs:
+        while files:
+            yield files.pop()
+        if not dirs:
+            break
+        path = dirs.pop()
+        ls = os.listdir(path)
+        for item in ls:
+            item = os.path.join(path, item)
+            if os.path.islink(item):
+                continue
+            elif os.path.isdir(item):
+                dirs.append(item)
+            elif os.path.isfile(item):
+                files.append(item)
+
+
+def modified(files, mtime):
+    for filename in files:
+        info = os.stat(filename)
+        b_mtime = mtime.get_mtime(filename)
+        if not b_mtime or (b_mtime < int(info.st_mtime)):
+            yield filename

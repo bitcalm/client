@@ -20,7 +20,7 @@ import backup
 import bitcalm
 from config import config, status as client_status
 from api import api
-from filesystem.utils import levelwalk
+from filesystem.utils import levelwalk, iterfiles, modified
 from actions import ActionPool, OneTimeAction, Action, StepAction, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
 from database import DEFAULT_DB_PORT, get_databases, dump_db
@@ -219,18 +219,31 @@ def make_backup():
         status, backup_id = api.set_backup_info('prepare',
                                                 time=time.time(),
                                                 schedule=schedule.id)
-        if not status == 200:
+        if status != 200:
             return False
         client_status.backup = {'backup_id': backup_id,
                                 'status': 0,
-                                'size': 0}
+                                'size': 0,
+                                'bfiles': []}
         client_status.save()
     else:
         backup_id = client_status.backup['backup_id']
     bstatus = client_status.backup
     if schedule.files and bstatus['status'] < 2:
+        schedule.clean_files()
         if bstatus['status'] == 0:
-            api.set_backup_info('filesystem', backup_id=backup_id)
+            status, content = api.set_backup_info(
+                                    'filesystem',
+                                    backup_id=backup_id,
+                                    has_info=bool(client_status.backupdb.count()))
+            if status == 200:
+                bstatus['is_full'] = content['is_full']
+                if 'info' in content:
+                    rows = [(k, ) + v for k, v in content['info'].iteritems()]
+                    del content
+                    client_status.backupdb.add(rows)
+            else:
+                return False
             bstatus['status'] = 1
             client_status.save()
         if bstatus.get('items') is None:
@@ -242,15 +255,29 @@ def make_backup():
         key_prefix = backup.get_prefix(backup_id,
                                        ptype=backup.PREFIX_TYPE.FS)[:-1]
         make_key = lambda f, p=key_prefix: '%s%s.gz' % (p, f)
-        while bstatus['items']['files']:
-            filename = bstatus['items']['files'].pop()
+
+        files = iterfiles(files=bstatus['items']['files'],
+                          dirs=bstatus['items']['dirs'])
+        if bstatus['is_full']:
+            client_status.backupdb.clean()
+        else:
+            files = modified(files, client_status.backupdb)
+
+        for filename in files:
+            info = os.stat(filename)
             bstatus['size'] += backup.backup(make_key(filename), filename)
+            row = (filename, info.st_mtime, info.st_size, backup_id)
+            client_status.backupdb.add((row,))
+            bstatus['bfiles'].append(row[:-1])
+            if len(bstatus['bfiles']) >= 100:
+                if api.upload_files_info(backup_id,
+                                         bstatus['bfiles']) == 200:
+                    bstatus['bfiles'] = []
             client_status.save()
-        while bstatus['items']['dirs']:
-            for path, dirs, files in os.walk(bstatus['items']['dirs'].pop()):
-                for fname in files:
-                    fpath = os.path.join(path, fname)
-                    bstatus['size'] += backup.backup(make_key(fpath), fpath)
+
+        if bstatus['bfiles']:
+            status = api.upload_files_info(backup_id, bstatus['bfiles'])
+            bstatus['bfiles'] = []
             client_status.save()
 
     if schedule.databases and bstatus['status'] < 3:
@@ -306,7 +333,8 @@ def make_backup():
     api.set_backup_info('complete',
                         backup_id=backup_id,
                         time=time.time(),
-                        size=bstatus['size'])
+                        size=bstatus['size'],
+                        files=bstatus['bfiles'])
     client_status.backup = None
     backup.next_schedule().done()
     client_status.save()

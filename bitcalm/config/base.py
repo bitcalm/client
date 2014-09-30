@@ -1,5 +1,7 @@
+import os
 import re
 import pickle
+import sqlite3
 from uuid import uuid1
 from datetime import datetime, timedelta
 
@@ -116,6 +118,7 @@ class Status(object):
                     option,
                     data.get(option, kwargs.get(option) \
                                         or Status.DEFAULT.get(option)))
+        self.backupdb = BackupData('/var/lib/bitcalm/backup.db')
 
     def get_files(self):
         files = []
@@ -139,3 +142,78 @@ class Status(object):
         with open(self.path, 'w') as f:
             data = {opt: getattr(self, opt, None) for opt in Status.OPTIONS}
             pickle.dump(data, f)
+
+
+def connect(func):
+    def inner(self, *args, **kwargs):
+        conn, cur = self._connect()
+        kwargs['conn'] = conn
+        kwargs['cur'] = cur
+        result = func(self, *args, **kwargs)
+        cur.close()
+        conn.close()
+        return result
+    return inner
+
+
+class BackupData(object):
+
+    class QUERY:
+        _TABLE_NAME = 'backup'
+        DROP = """DROP TABLE IF EXISTS %s""" % _TABLE_NAME
+        CREATE = """CREATE TABLE %s (path TEXT PRIMARY KEY, mtime FLOAT, size INTEGER, backup_id INTEGER)""" % _TABLE_NAME
+        GET_ROW = """SELECT mtime, size FROM %s WHERE path=?""" % _TABLE_NAME
+        INSERT = """INSERT OR REPLACE INTO %s VALUES(?,?,?,?)""" % _TABLE_NAME
+        COUNT = """SELECT COUNT(*) FROM %s""" % _TABLE_NAME
+        FILES_ALL = """SELECT path, backup_id FROM backup"""
+        FILES = FILES_ALL + """ WHERE backup_id <= ?"""
+
+    def __init__(self, dbpath):
+        self.db = dbpath
+        if not os.path.exists(self.db):
+            self.clean()
+
+    def _connect(self):
+        conn = sqlite3.connect(self.db)
+        return conn, conn.cursor()
+
+    @connect
+    def clean(self, conn, cur):
+        cur.execute(self.QUERY.DROP)
+        cur.execute(self.QUERY.CREATE)
+        conn.commit()
+
+    @connect
+    def get(self, path, conn, cur):
+        cur.execute(self.QUERY.GET_ROW, (unicode(path),))
+        row = cur.fetchone()
+        return row
+
+    def get_mtime(self, path):
+        row = self.get(path)
+        return row[0] if row else 0
+
+    def get_size(self, path):
+        row = self.get(path)
+        return row[1] if row else None
+
+    @connect
+    def add(self, rows, conn, cur):
+        if len(rows) > 1:
+            cur.executemany(self.QUERY.INSERT, rows)
+        else:
+            cur.execute(self.QUERY.INSERT, rows[0])
+        conn.commit()
+
+    @connect
+    def files(self, backup_id=None, **kwargs):
+        args = (self.QUERY.FILES,
+                (backup_id,)) if backup_id else (self.QUERY.FILES_ALL,)
+        cur = kwargs['cur']
+        cur.execute(*args)
+        return cur.fetchall()
+
+    @connect
+    def count(self, conn, cur):
+        cur.execute(self.QUERY.COUNT)
+        return cur.fetchone()[0]

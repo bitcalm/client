@@ -115,14 +115,26 @@ class Api(object):
     
     def set_backup_info(self, status, **kwargs):
         backup_id = kwargs.pop('backup_id', None)
-        allowed = ('time', 'size', 'schedule')
+        allowed = ('time', 'size', 'schedule', 'has_info')
         data = {k: v for k, v in kwargs.iteritems() if k in allowed}
         if backup_id:
             data['id'] = backup_id
         s, c = self._send('backup/%s' % status, data)
-        if not backup_id and s == 200:
-            c = int(c)
+        if s == 200:
+            if not backup_id:
+                c = int(c)
+            elif status == 'filesystem':
+                c = json.loads(c)
         return s, c
+
+    def upload_files_info(self, backup_id, files):
+        files = json.dumps(files)
+        return self._send('backup/%i/files' % backup_id,
+                          data={'files': files})[0]
+
+    @returns_json
+    def get_files_info(self, backup_id):
+        return self._send('backup/%i/files' % backup_id, method='GET')
     
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]
