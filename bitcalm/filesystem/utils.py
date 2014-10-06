@@ -1,8 +1,8 @@
 import os
 
 
-IGNORE_DIRS = ('sys', 'dev', 'root', 'cdrom', 'boot',
-               'lost+found', 'proc', 'tmp', 'sbin', 'bin')
+IGNORE_DIRS = ('sys', 'dev', 'cdrom', 'boot', 'lost+found',
+               'proc', 'tmp', 'sbin', 'bin')
 
 
 def ls(path):
