@@ -3,10 +3,38 @@ import gzip
 import subprocess
 import itertools
 
+import mysql.connector
+
 from bitcalm.config import config, status
 
 
 DEFAULT_DB_PORT = 3306
+
+
+def connection_error(**kwargs):
+    try:
+        mysql.connector.connect(**kwargs)
+    except mysql.connector.errors.Error as err:
+        return err.errno
+    return 0
+
+
+def get_cursor(**kwargs):
+    kwargs['password'] = kwargs.pop('passwd')
+    return MySQLContextManager(**kwargs)
+
+
+class MySQLContextManager(object):
+    def __init__(self, **kwargs):
+        self.conn = mysql.connector.connect(**kwargs)
+        self.cur = self.conn.cursor()
+
+    def __enter__(self):
+        return self.cur
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.conn.close()
+        self.cur.close()
 
 
 def _make_args(util='mysql', **kwargs):
@@ -19,12 +47,10 @@ def _make_args(util='mysql', **kwargs):
     return args
 
 
-def get_databases(host, user, passwd='', port=3306):
-    kwargs = vars()
-    kwargs['execute'] = 'show databases;'
-    mysql = subprocess.Popen(_make_args(**kwargs),
-                             stdout=subprocess.PIPE)
-    return mysql.communicate()[0].split('\n')[1:-1]
+def get_databases(user, passwd='', host='localhost', port=3306):
+    with get_cursor(**vars()) as cur:
+        cur.execute('show databases;')
+        return [row[0] for row in cur.fetchall()]
 
 
 def is_database_exists(name, host, user, passwd='', port=3306):

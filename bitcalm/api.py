@@ -139,6 +139,10 @@ class Api(object):
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]
 
+    def report_db_errors(self, errors):
+        return self._send('databases/errors',
+                          data={'errors': json.dumps(errors)})[0]
+
     @returns_json
     def get_db_credentials(self):
         return self._send('get/db', method='GET')

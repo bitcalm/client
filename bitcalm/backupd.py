@@ -14,6 +14,7 @@ from logging import FileHandler
 from threading import Thread
 
 from daemon import DaemonContext
+from mysql.connector import errors as mysql_errors
 
 import log
 import backup
@@ -23,7 +24,7 @@ from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
 from actions import ActionPool, OneTimeAction, Action, StepAction, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
-from database import DEFAULT_DB_PORT, get_databases, dump_db
+from database import DEFAULT_DB_PORT, get_databases, dump_db, connection_error
 
 
 MIN = 60
@@ -98,11 +99,22 @@ def check_db():
     if not (config.database or client_status.database):
         return True
     databases = {}
+    errors = []
     for db in itertools.chain(config.database, client_status.database):
-        db_names = get_databases(**db)
+        try:
+            db_names = get_databases(**db)
+        except mysql_errors.Error as err:
+            errors.append((db['host'],
+                           db.get('port', DEFAULT_DB_PORT),
+                           err.errno))
+            continue
         if db_names:
             databases['%s:%i' % (db['host'], db['port'])] = ';'.join(db_names)
-    return api.set_databases(databases) == 200
+    if errors:
+        api.report_db_errors(errors)
+    if databases:
+        return api.set_databases(databases) == 200
+    return True
 
 
 def update(url):
@@ -152,10 +164,19 @@ def check_changes():
         if access:
             client_status.amazon = access
 
-        db = content.get('db')
-        if db:
-            client_status.database = db
-            if not actions.has(check_db):
+        dbases = content.get('db')
+        if dbases:
+            client_status.database = dbases
+            db_test = ((db, connection_error(**db)) for db in dbases)
+            err_db = filter(lambda db: db[1], db_test)
+            if err_db:
+                for db in err_db:
+                    dbases.remove(db[0])
+                err_db = [(db['host'],
+                           db.get('port', 3306),
+                           err) for db, err in err_db]
+                api.report_db_errors(err_db)
+            if dbases and not actions.has(check_db):
                 actions.add(Action(DB_CHECK_PERIOD, check_db, start=0))
 
         schedules = content.get('schedules')
