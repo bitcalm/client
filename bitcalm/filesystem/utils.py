@@ -82,7 +82,8 @@ def iterfiles(files=None, dirs=None):
             item = os.path.join(path, item)
             if os.path.islink(item):
                 continue
-            elif os.path.isdir(item):
+            item = item.decode('utf-8')
+            if os.path.isdir(item):
                 dirs.append(item)
             elif os.path.isfile(item):
                 files.append(item)
