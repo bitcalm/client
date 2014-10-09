@@ -288,7 +288,13 @@ def make_backup():
             key = make_key(filename)
             info = os.stat(filename)
             bstatus['size'] += backup.backup(key, filename)
-            row = (filename, info.st_mtime, info.st_size, backup_id)
+            row = (filename,
+                   info.st_mtime,
+                   info.st_size,
+                   info.st_mode,
+                   info.st_uid,
+                   info.st_gid,
+                   backup_id)
             client_status.backupdb.add((row,))
             bstatus['bfiles'].append(row[:-1])
             if len(bstatus['bfiles']) >= 100:

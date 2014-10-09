@@ -160,10 +160,19 @@ class BackupData(object):
 
     class QUERY:
         _TABLE_NAME = 'backup'
+        _COLUMNS = ('path TEXT PRIMARY KEY',
+                    'mtime FLOAT',
+                    'size INTEGER',
+                    'mode INTEGER',
+                    'uid INTEGER',
+                    'gid INTEGER',
+                    'backup_id INTEGER')
         DROP = """DROP TABLE IF EXISTS %s""" % _TABLE_NAME
-        CREATE = """CREATE TABLE %s (path TEXT PRIMARY KEY, mtime FLOAT, size INTEGER, backup_id INTEGER)""" % _TABLE_NAME
+        CREATE = """CREATE TABLE %s (%s)""" % (_TABLE_NAME,
+                                               ', '.join(_COLUMNS))
         GET_ROW = """SELECT mtime, size FROM %s WHERE path=?""" % _TABLE_NAME
-        INSERT = """INSERT OR REPLACE INTO %s VALUES(?,?,?,?)""" % _TABLE_NAME
+        INSERT = """INSERT OR REPLACE INTO %s VALUES(%s)""" % (_TABLE_NAME,
+                                                               ','.join('?'*len(_COLUMNS)))
         COUNT = """SELECT COUNT(*) FROM %s""" % _TABLE_NAME
         FILES_ALL = """SELECT path, backup_id FROM backup"""
         FILES = FILES_ALL + """ WHERE backup_id <= ?"""
