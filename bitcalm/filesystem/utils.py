@@ -4,6 +4,7 @@ import sys
 
 IGNORE_DIRS = ('sys', 'dev', 'cdrom', 'boot', 'lost+found',
                'proc', 'tmp', 'sbin', 'bin')
+FS_ENCODING = sys.getfilesystemencoding()
 
 
 def ls(path):
@@ -83,7 +84,7 @@ def iterfiles(files=None, dirs=None):
             item = os.path.join(path, item)
             if os.path.islink(item):
                 continue
-            item = item.decode(sys.getfilesystemencoding())
+            item = item.decode(FS_ENCODING)
             if os.path.isdir(item):
                 dirs.append(item)
             elif os.path.isfile(item):
