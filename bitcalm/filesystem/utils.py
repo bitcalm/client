@@ -1,4 +1,5 @@
 import os
+import sys
 
 
 IGNORE_DIRS = ('sys', 'dev', 'cdrom', 'boot', 'lost+found',
@@ -82,7 +83,7 @@ def iterfiles(files=None, dirs=None):
             item = os.path.join(path, item)
             if os.path.islink(item):
                 continue
-            item = item.decode('utf-8')
+            item = item.decode(sys.getfilesystemencoding())
             if os.path.isdir(item):
                 dirs.append(item)
             elif os.path.isfile(item):
