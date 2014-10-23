@@ -139,8 +139,10 @@ class Status(object):
         return self.last_ver_check + timedelta(minutes=10) > datetime.now()
 
     def save(self):
+        data = {}
+        for opt in Status.OPTIONS:
+            data[opt] = getattr(self, opt, None)
         with open(self.path, 'w') as f:
-            data = {opt: getattr(self, opt, None) for opt in Status.OPTIONS}
             pickle.dump(data, f)
 
 

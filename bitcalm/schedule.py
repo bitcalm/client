@@ -46,23 +46,23 @@ class Schedule(object):
 class DailySchedule(Schedule):
     def __init__(self, **kwargs):
         self.period = kwargs.pop('day')
-        super(DailySchedule, self).__init__(**kwargs)
+        Schedule.__init__(self, **kwargs)
 
     def get_next(self):
         if not self.prev_backup:
-            return super(DailySchedule, self).get_next()
+            return Schedule.get_next(self)
         next_date = self.prev_backup.date() + timedelta(days=self.period)
         return datetime.combine(next_date, self.time)
 
     def update(self, **kwargs):
         self.period = kwargs.pop('day')
-        super(DailySchedule, self).update(**kwargs)
+        Schedule.update(self, **kwargs)
 
 
 class WeeklySchedule(Schedule):
     def __init__(self, **kwargs):
         self.days = self._convert_days(kwargs.pop('days'))
-        super(WeeklySchedule, self).__init__(**kwargs)
+        Schedule.__init__(self, **kwargs)
 
     def _convert_days(self, days):
         d = []
@@ -83,13 +83,13 @@ class WeeklySchedule(Schedule):
 
     def update(self, **kwargs):
         self.days = self._convert_days(kwargs.pop('days'))
-        super(WeeklySchedule, self).update(**kwargs)
+        Schedule.update(self, **kwargs)
 
 
 class MonthlySchedule(Schedule):
     def __init__(self, **kwargs):
         self.day = kwargs.pop('day')
-        super(MonthlySchedule, self).__init__(**kwargs)
+        Schedule.__init__(self, **kwargs)
 
     def get_next(self):
         today = date.today()
@@ -103,4 +103,4 @@ class MonthlySchedule(Schedule):
 
     def update(self, **kwargs):
         self.day = kwargs.pop('day')
-        super(MonthlySchedule, self).update(**kwargs)
+        Schedule.update(self, **kwargs)

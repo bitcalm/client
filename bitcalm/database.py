@@ -90,6 +90,7 @@ def dump_db(name, host, user, path, passwd='', port=3306):
                             stdout=subprocess.PIPE)
     if dump.poll():
         return False
-    with gzip.open(path, 'wb') as f:
-        f.write(dump.stdout.read())
+    gz = gzip.open(path, 'wb')
+    gz.write(dump.stdout.read())
+    gz.close()
     return True

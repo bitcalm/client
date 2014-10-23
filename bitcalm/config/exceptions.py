@@ -12,5 +12,5 @@ class ConfigSyntaxError(ConfigError):
 
 class ConfigEntryError(ConfigError):
     def __init__(self, entry, msg):
-        super(ConfigEntryError, self).__init__(msg)
+        ConfigError.__init__(self, msg)
         self.entry = entry

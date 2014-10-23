@@ -66,10 +66,11 @@ def compress(filename, gzipped=None):
         gzipped = '/tmp/%s.gz' % os.path.basename(filename)
     if not os.path.exists(filename):
         return ''
+    gz = gzip.open(gzipped, 'wb')
     with open(filename, 'rb') as f:
-        with gzip.open(gzipped, 'wb') as gz:
-            for chunk in chunks(f):
-                gz.write(chunk)
+        for chunk in chunks(f):
+            gz.write(chunk)
+    gz.close()
     return gzipped
 
 
@@ -79,10 +80,11 @@ def decompress(zipped, unzipped=None, delete=True):
     dirname = os.path.dirname(unzipped)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-    with gzip.open(zipped, 'rb') as gz:
-        with open(unzipped, 'wb') as f:
-            for chunk in chunks(gz):
-                f.write(chunk)
+    gz = gzip.open(zipped, 'rb')
+    with open(unzipped, 'wb') as f:
+        for chunk in chunks(gz):
+            f.write(chunk)
+    gz.close()
     if delete:
         os.remove(zipped)
     return unzipped

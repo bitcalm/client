@@ -19,6 +19,7 @@ from mysql.connector import errors as mysql_errors
 import log
 import backup
 import bitcalm
+from bitcalm.utils import total_seconds
 from config import config, status as client_status
 from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
@@ -29,11 +30,12 @@ from database import DEFAULT_DB_PORT, get_databases, dump_db, connection_error
 
 MIN = 60
 HOUR = 60 * MIN
+DAY = 24 * HOUR
 
-FS_SET_PERIOD = 24 * HOUR
+FS_SET_PERIOD = DAY
 LOG_UPLOAD_PERIOD = 5 * MIN
 CHANGES_CHECK_PERIOD = 10 * MIN
-DB_CHECK_PERIOD = 24 * HOUR
+DB_CHECK_PERIOD = DAY
 PIDFILE_PATH = '/var/run/bitcalmd.pid'
 CRASH_PATH = '/var/log/bitcalm.crash'
 
@@ -127,8 +129,9 @@ def update(url):
         import pip
     except ImportError:
         dst = '/tmp/bitcalm'
-        with tarfile.open(filename) as tar:
-            tar.extractall(dst)
+        tar = tarfile.open(filename)
+        tar.extractall(dst)
+        tar.close()
         subprocess.check_call(('python2.7', 'setup.py', 'install'), cwd=dst)
     else:
         pip.main(['uninstall', '-qy', 'bitcalm'])
@@ -184,7 +187,9 @@ def check_changes():
             types = {'daily': DailySchedule,
                      'weekly': WeeklySchedule,
                      'monthly': MonthlySchedule}
-            curr = {s.id: s for s in client_status.schedules}
+            curr = {}
+            for s in client_status.schedules:
+                curr[s.id] = s
             for s in schedules:
                 if 'db' in s:
                     s['db'] = pickle.loads(s['db'])
@@ -401,7 +406,7 @@ def work():
     actions.clear()
     if client_status.last_fs_upload:
         next_upload = client_status.last_fs_upload + timedelta(FS_SET_PERIOD)
-        till_next = max(0, (next_upload - datetime.utcnow()).total_seconds())
+        till_next = max(0, total_seconds(next_upload - datetime.utcnow()))
     else:
         till_next = 0
     actions.add(StepAction(FS_SET_PERIOD, update_fs, start=till_next))
@@ -512,8 +517,8 @@ def usage():
 
 
 def main():
-    if sys.version_info < (2, 7):
-        exit('Please upgrade your python to 2.7 or newer')
+    if sys.version_info < (2, 6):
+        exit('Please upgrade your python to 2.6 or newer')
     if len(sys.argv) != 2:
         usage()
     actions = {'start': start,

@@ -8,8 +8,8 @@ from setuptools import setup, find_packages
 from bitcalm import __version__
 
 
-if sys.version_info < (2, 7):
-    exit('Please upgrade your python to 2.7 or newer')
+if sys.version_info < (2, 6):
+    exit('Please upgrade your python to 2.6 or newer')
 
 with open('req.txt') as req:
     install_requires = [s.strip() for s in req.readlines()]

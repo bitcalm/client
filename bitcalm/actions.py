@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from bitcalm import log
+from bitcalm.utils import total_seconds
 
 
 class ActionPool(object):
@@ -101,7 +102,7 @@ class Action(object):
     def time_left(self):
         now = datetime.utcnow()
         if self.time > now:
-            return (self.time - now).total_seconds()
+            return total_seconds(self.time - now)
         return 0
 
 
@@ -110,7 +111,7 @@ class OneTimeAction(Action):
         self._followers = kwargs.pop('followers', [])
         # cancel can contain function, tag or action
         self._cancel = kwargs.pop('cancel', [])
-        super(OneTimeAction, self).__init__(nexttime, func, *args, **kwargs)
+        Action.__init__(self, nexttime, func, *args, **kwargs)
 
     def __call__(self):
         log.info('Perform action: %s' % self._func)
@@ -144,7 +145,7 @@ class OneTimeAction(Action):
 class StepAction(Action):
     def __init__(self, nexttime, func, *args, **kwargs):
         self.step = kwargs.pop('step', 600)
-        super(StepAction, self).__init__(nexttime, func, *args, **kwargs)
+        Action.__init__(self, nexttime, func, *args, **kwargs)
 
     def __call__(self):
         log.info('Perform action: %s' % self._func)

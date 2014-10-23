@@ -3,7 +3,7 @@ import logging
 
 class ListHandler(logging.Handler):
     def __init__(self, upload, *args, **kwargs):
-        super(ListHandler, self).__init__(*args, **kwargs)
+        logging.Handler.__init__(self, *args, **kwargs)
         self.log = upload
     
     def emit(self, record):

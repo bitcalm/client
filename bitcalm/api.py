@@ -116,7 +116,10 @@ class Api(object):
     def set_backup_info(self, status, **kwargs):
         backup_id = kwargs.pop('backup_id', None)
         allowed = ('time', 'size', 'schedule', 'has_info')
-        data = {k: v for k, v in kwargs.iteritems() if k in allowed}
+        data = {}
+        for k, v in kwargs.iteritems():
+            if k in allowed:
+                data[k] = v
         if backup_id:
             data['id'] = backup_id
         s, c = self._send('backup/%s' % status, data)
