@@ -25,7 +25,11 @@ from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
 from actions import ActionPool, OneTimeAction, Action, StepAction, ActionSeed
 from schedule import DailySchedule, WeeklySchedule, MonthlySchedule
-from database import DEFAULT_DB_PORT, get_databases, dump_db, connection_error
+from database import (EXCLUDE_DB,
+                      DEFAULT_DB_PORT,
+                      get_databases,
+                      dump_db,
+                      connection_error)
 
 
 MIN = 60
@@ -192,7 +196,11 @@ def check_changes():
                 curr[s.id] = s
             for s in schedules:
                 if 'db' in s:
-                    s['db'] = pickle.loads(s['db'])
+                    db = pickle.loads(s['db'])
+                    user_db = lambda db: db not in EXCLUDE_DB
+                    for dbases in db.itervalues():
+                        dbases[:] = filter(user_db, dbases)
+                    s['db'] = db
                 cs = curr.get(s['id'])
                 if cs:
                     if isinstance(cs, types[s['type']]):
