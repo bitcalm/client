@@ -9,6 +9,13 @@ from bitcalm.config import config, status
 
 
 DEFAULT_DB_PORT = 3306
+EXCLUDE_DB = set(('information_schema',
+                  'performance_schema',
+                  'cond_instances',
+                  'file_instances',
+                  'mutex_instances',
+                  'rwlock_instances',
+                  'socket_instances'))
 
 
 def connection_error(**kwargs):
@@ -50,7 +57,7 @@ def _make_args(util='mysql', **kwargs):
 def get_databases(user, passwd='', host='localhost', port=3306):
     with get_cursor(**vars()) as cur:
         cur.execute('show databases;')
-        return [row[0] for row in cur.fetchall()]
+        return [name for name, in cur.fetchall() if name not in EXCLUDE_DB]
 
 
 def is_database_exists(name, host, user, passwd='', port=3306):
