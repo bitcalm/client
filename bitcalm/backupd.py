@@ -272,7 +272,9 @@ def make_backup():
                                     has_info=bool(client_status.backupdb.count()))
             if status == 200:
                 bstatus['is_full'] = content['is_full']
-                if 'info' in content:
+                if bstatus['is_full']:
+                    client_status.backupdb.clean()
+                elif 'info' in content:
                     rows = [(k, ) + v for k, v in content['info'].iteritems()]
                     del content
                     client_status.backupdb.add(rows)
@@ -292,9 +294,7 @@ def make_backup():
 
         files = iterfiles(files=bstatus['items']['files'],
                           dirs=bstatus['items']['dirs'])
-        if bstatus['is_full']:
-            client_status.backupdb.clean()
-        else:
+        if not bstatus['is_full']:
             files = modified(files, client_status.backupdb)
 
         for filename in files:
