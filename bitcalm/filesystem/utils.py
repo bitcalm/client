@@ -81,7 +81,9 @@ def iterfiles(files=None, dirs=None):
         path = dirs.pop()
         ls = os.listdir(path)
         for item in ls:
-            item = os.path.join(path, item.decode(FS_ENCODING))
+            if not isinstance(item, unicode):
+                item = item.decode(FS_ENCODING)
+            item = os.path.join(path, item)
             if os.path.islink(item):
                 continue
             if os.path.isdir(item):
