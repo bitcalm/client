@@ -12,7 +12,7 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
 DESC="Bitcalm backup service"
 NAME=bitcalmd
-DAEMON=/usr/local/bin/bitcalm
+DAEMON=`command -v bitcalm`
 PIDFILE=/var/run/bitcalmd.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
