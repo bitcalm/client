@@ -20,9 +20,12 @@ SCRIPTNAME=/etc/init.d/$NAME
 
 [ -r /etc/default/$NAME ] && . /etc/default/$NAME
 
-. /lib/init/vars.sh
-
-. /lib/lsb/init-functions
+if [ -r /etc/init.d/functions ]; then
+	. /etc/init.d/functions
+else
+	. /lib/init/vars.sh
+	. /lib/lsb/init-functions
+fi
 
 do_start()
 {
