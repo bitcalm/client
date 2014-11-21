@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 
 
 class ListHandler(logging.Handler):
@@ -13,7 +14,9 @@ class ListHandler(logging.Handler):
 logger = logging.getLogger('bitcalm')
 logger.setLevel(logging.INFO)
 
-fh = logging.FileHandler('/var/log/bitcalm.log')
+fh = RotatingFileHandler('/var/log/bitcalm.log',
+                         maxBytes=20*1024**2,
+                         backupCount=4)
 fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s',
                         '%Y-%m-%d %H:%M:%S')
 fh.setFormatter(fmt)
