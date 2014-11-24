@@ -20,6 +20,7 @@ import log
 import backup
 import bitcalm
 from bitcalm.utils import total_seconds
+from bitcalm.const import MB, MIN, DAY
 from config import config, status as client_status
 from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
@@ -31,11 +32,7 @@ from database import (EXCLUDE_DB,
                       dump_db,
                       connection_error)
 
-
-MIN = 60
-HOUR = 60 * MIN
-DAY = 24 * HOUR
-
+MAX_CRASH_SIZE = MB
 FS_SET_PERIOD = DAY
 LOG_UPLOAD_PERIOD = 5 * MIN
 CHANGES_CHECK_PERIOD = 10 * MIN
@@ -397,19 +394,31 @@ def immortal(func):
                 t = restart()
     return inner
 
+
 @immortal
 def work():
-    if not client_status.is_actual_version():
-        check_update()
     if os.path.exists(CRASH_PATH):
         crash = os.stat(CRASH_PATH)
         if crash.st_size:
             with open(CRASH_PATH) as f:
+                if crash.st_size > MAX_CRASH_SIZE:
+                    f.seek(crash.st_size - MAX_CRASH_SIZE)
                 crash_info = f.read()
-            status = api.report_crash(crash_info, crash.st_mtime)
+            try:
+                status = api.report_crash(crash_info, crash.st_mtime)
+            except Exception:
+                status = 0
             if status == 200:
                 log.info('Crash reported')
                 os.remove(CRASH_PATH)
+            else:
+                log.error('Crash report failed with status %i' % status)
+                with open(CRASH_PATH, 'w') as f:
+                    f.write(crash_info)
+            del crash_info
+
+    if not client_status.is_actual_version():
+        check_update()
 
     actions.clear()
     if client_status.last_fs_upload:
