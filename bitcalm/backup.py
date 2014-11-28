@@ -63,7 +63,7 @@ def chunks(fileobj, chunk_size=4*MB):
 
 def compress(filename, gzipped=None):
     if not gzipped:
-        gzipped = '/tmp/%s.gz' % os.path.basename(filename)
+        gzipped = '/tmp/bitcalm_compress.gz'
     if not os.path.exists(filename):
         return ''
     gz = gzip.open(gzipped, 'wb')
