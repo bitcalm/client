@@ -90,7 +90,7 @@ def decompress(zipped, unzipped=None, delete=True):
     return unzipped
 
 
-def upload(key_name, filepath, delete=True):
+def upload(key_name, filepath, **kwargs):
     bucket = get_bucket()
     size = os.stat(filepath).st_size
     if size > CHUNK_SIZE:
@@ -107,8 +107,6 @@ def upload(key_name, filepath, delete=True):
         k = Key(bucket)
         k.key = key_name
         size = k.set_contents_from_filename(filepath, encrypt_key=True)
-    if delete:
-        os.remove(filepath)
     return size
 
 
@@ -133,7 +131,13 @@ def download(key, path):
 
 def backup(key_name, filename):
     gzipped = compress(filename)
-    return upload(key_name, gzipped) if gzipped else 0
+    if not gzipped:
+        return 0
+    try:
+        size = upload(key_name, gzipped)
+    finally:
+        os.remove(gzipped)
+    return size
 
 
 def restore(backup_id):
