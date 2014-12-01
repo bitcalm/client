@@ -94,7 +94,10 @@ def iterfiles(files=None, dirs=None):
 
 def modified(files, mtime):
     for filename in files:
-        info = os.stat(filename)
+        try:
+            info = os.stat(filename)
+        except OSError:
+            continue
         b_mtime = mtime.get_mtime(filename)
         if not b_mtime or (b_mtime < int(info.st_mtime)):
             yield filename

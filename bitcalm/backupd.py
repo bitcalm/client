@@ -296,7 +296,10 @@ def make_backup():
 
         for filename in files:
             key = make_key(filename)
-            info = os.stat(filename)
+            try:
+                info = os.stat(filename)
+            except OSError:
+                continue
             bstatus['size'] += backup.backup(key, filename)
             row = (filename,
                    info.st_mtime,
