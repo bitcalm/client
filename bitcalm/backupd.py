@@ -397,7 +397,7 @@ def get_crash():
 def report_crash():
     info, when = get_crash()
     if not info:
-        return None
+        return True
     try:
         status = api.report_crash(info, when)
     except Exception, e:
@@ -459,6 +459,9 @@ def work():
                                   get_s3_access,
                                   followers=[ActionSeed(backup.next_date,
                                                         make_backup)]))
+
+    if os.path.exists(CRASH_PATH) and os.stat(CRASH_PATH).st_size > 0:
+        actions.add(OneTimeAction(10*MIN, report_crash, start=0))
 
     log.info('Start main loop')
     while True:
