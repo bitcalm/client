@@ -382,6 +382,40 @@ def make_backup():
     return True
 
 
+def get_crash():
+    if not os.path.exists(CRASH_PATH):
+        return '', 0
+    crash = os.stat(CRASH_PATH)
+    if not crash.st_size:
+        return '', 0
+    with open(CRASH_PATH) as f:
+        if crash.st_size > MAX_CRASH_SIZE:
+            f.seek(crash.st_size - MAX_CRASH_SIZE)
+        return f.read(), crash.st_mtime
+
+
+def report_crash():
+    info, when = get_crash()
+    if not info:
+        return None
+    try:
+        status = api.report_crash(info, when)
+    except Exception, e:
+        log.error('Crash report failed: %s' % type(e).__name__)
+        success = status = False
+    else:
+        success = status == 200
+    if success:
+        log.info('Crash reported')
+        os.remove(CRASH_PATH)
+    else:
+        if status:
+            log.error('Crash report failed with status %i' % status)
+        with open(CRASH_PATH, 'w') as f:
+            f.write(info)
+    return success
+
+
 def immortal(func):
     def inner():
         def restart():
@@ -393,33 +427,15 @@ def immortal(func):
         while True:
             t.join(2**31)
             if not t.is_alive():
-                log.error('Unhandled exception, restarting')
+                c = Thread(target=report_crash)
+                c.setDaemon(True)
+                c.start()
                 t = restart()
     return inner
 
 
 @immortal
 def work():
-    if os.path.exists(CRASH_PATH):
-        crash = os.stat(CRASH_PATH)
-        if crash.st_size:
-            with open(CRASH_PATH) as f:
-                if crash.st_size > MAX_CRASH_SIZE:
-                    f.seek(crash.st_size - MAX_CRASH_SIZE)
-                crash_info = f.read()
-            try:
-                status = api.report_crash(crash_info, crash.st_mtime)
-            except Exception:
-                status = 0
-            if status == 200:
-                log.info('Crash reported')
-                os.remove(CRASH_PATH)
-            else:
-                log.error('Crash report failed with status %i' % status)
-                with open(CRASH_PATH, 'w') as f:
-                    f.write(crash_info)
-            del crash_info
-
     if not client_status.is_actual_version():
         check_update()
 
