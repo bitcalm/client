@@ -389,9 +389,15 @@ def get_crash():
     if not crash.st_size:
         return '', 0
     with open(CRASH_PATH) as f:
-        if crash.st_size > MAX_CRASH_SIZE:
+        is_big = crash.st_size > MAX_CRASH_SIZE
+        if is_big:
             f.seek(crash.st_size - MAX_CRASH_SIZE)
-        return f.read(), crash.st_mtime
+        data = f.read()
+    mtime = crash.st_mtime
+    if is_big:
+        with open(CRASH_PATH, 'w') as f:
+            f.write(data)
+    return data, mtime
 
 
 def report_crash():
@@ -408,11 +414,8 @@ def report_crash():
     if success:
         log.info('Crash reported')
         os.remove(CRASH_PATH)
-    else:
-        if status:
-            log.error('Crash report failed with status %i' % status)
-        with open(CRASH_PATH, 'w') as f:
-            f.write(info)
+    elif status:
+        log.error('Crash report failed with status %i' % status)
     return success
 
 
