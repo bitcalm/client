@@ -20,7 +20,7 @@ import log
 import backup
 import bitcalm
 from bitcalm.utils import total_seconds
-from bitcalm.const import MB, MIN, DAY
+from bitcalm.const import KB, MIN, DAY
 from config import config, status as client_status
 from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
@@ -32,7 +32,7 @@ from database import (EXCLUDE_DB,
                       dump_db,
                       connection_error)
 
-MAX_CRASH_SIZE = MB
+MAX_CRASH_SIZE = KB
 FS_SET_PERIOD = DAY
 LOG_UPLOAD_PERIOD = 5 * MIN
 CHANGES_CHECK_PERIOD = 10 * MIN
