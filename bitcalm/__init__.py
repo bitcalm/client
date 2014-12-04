@@ -2,7 +2,7 @@ import os
 import subprocess
 from datetime import datetime
 
-VERSION = (0, 1, 0, 'alpha', 13)
+VERSION = (0, 1, 0, 'dev', 13)
 
 
 def get_version(version=VERSION):
