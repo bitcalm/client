@@ -2,6 +2,9 @@ import os
 import sys
 
 
+from bitcalm.api import api
+
+
 IGNORE_DIRS = ('sys', 'dev', 'cdrom', 'boot', 'lost+found',
                'proc', 'tmp', 'sbin', 'bin')
 FS_ENCODING = sys.getfilesystemencoding()
@@ -82,7 +85,11 @@ def iterfiles(files=None, dirs=None):
         ls = os.listdir(path)
         for item in ls:
             if not isinstance(item, unicode):
-                item = item.decode(FS_ENCODING)
+                try:
+                    item = item.decode(FS_ENCODING)
+                except Exception, e:
+                    api.report_exception(e)
+                    continue
             item = os.path.join(path, item)
             if os.path.islink(item):
                 continue
