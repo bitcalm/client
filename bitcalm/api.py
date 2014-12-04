@@ -42,11 +42,15 @@ class Api(object):
         if method == 'GET':
             url = '%s?%s' % (url, body)
             body = None
-        self.conn.request(method, url, body, headers)
-        response = self.conn.getresponse()
-        result = (response.status, response.read())
-        self.conn.close()
-        return result
+        try:
+            self.conn.request(method, url, body, headers)
+        except Exception, e:
+            raise e
+        else:
+            response = self.conn.getresponse()
+            return (response.status, response.read())
+        finally:
+            self.conn.close()
     
     def encode_multipart_data(self, data={}, files={}):
         """ Returns multipart/form-data encoded data
