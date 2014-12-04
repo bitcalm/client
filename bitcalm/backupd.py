@@ -433,6 +433,7 @@ def immortal(func):
                 c = Thread(target=report_crash)
                 c.setDaemon(True)
                 c.start()
+                c.join(2**31)
                 t = restart()
     return inner
 
