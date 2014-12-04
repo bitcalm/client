@@ -170,6 +170,10 @@ class Api(object):
     def check_version(self):
         return self._send('version', data={'v': __version__})
 
+    def report_exception(self, exception):
+        return self._send('exception',
+                          files={'exception': pickle.dumps(exception)})
+
     @returns_json
     def get_version(self):
         return self._send('version/current', method='GET')
