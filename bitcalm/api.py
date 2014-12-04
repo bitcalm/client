@@ -172,7 +172,7 @@ class Api(object):
 
     def report_exception(self, exception):
         return self._send('exception',
-                          files={'exception': pickle.dumps(exception)})
+                          files={'exception': pickle.dumps(exception)})[0]
 
     @returns_json
     def get_version(self):
