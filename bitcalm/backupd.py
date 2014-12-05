@@ -445,8 +445,9 @@ def work():
 
     actions.clear()
     if client_status.last_fs_upload:
-        next_upload = client_status.last_fs_upload + timedelta(FS_SET_PERIOD)
-        till_next = max(0, total_seconds(next_upload - datetime.utcnow()))
+        nxt = client_status.last_fs_upload + timedelta(seconds=FS_SET_PERIOD)
+        till_next = max(0, total_seconds(nxt - datetime.utcnow()))
+        del nxt
     else:
         till_next = 0
     actions.add(StepAction(FS_SET_PERIOD, update_fs, start=till_next))
