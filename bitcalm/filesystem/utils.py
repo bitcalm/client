@@ -2,11 +2,10 @@ import os
 import sys
 
 
+from bitcalm.const import IGNORE_DIRS
 from bitcalm.api import api
 
 
-IGNORE_DIRS = ('sys', 'dev', 'cdrom', 'boot', 'lost+found',
-               'proc', 'tmp', 'sbin', 'bin')
 FS_ENCODING = sys.getfilesystemencoding()
 
 

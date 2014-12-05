@@ -2,7 +2,7 @@ import os
 import calendar
 from datetime import datetime, date, time, timedelta
 
-from bitcalm.filesystem.utils import IGNORE_DIRS
+from bitcalm.const import IGNORE_DIRS
 
 
 class Schedule(object):
