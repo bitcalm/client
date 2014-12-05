@@ -11,6 +11,9 @@ class ActionPool(object):
     def _funcs(self):
         return [a._func for a in self._actions]
 
+    def __iter__(self):
+        return iter(sorted(self._actions))
+
     def add(self, action):
         if action._func in self._funcs():
             return False
