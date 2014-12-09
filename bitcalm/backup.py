@@ -9,6 +9,7 @@ from filechunkio import FileChunkIO
 from bitcalm import log
 from bitcalm.api import api
 from bitcalm.config import status
+from bitcalm.config.base import BackupData
 from bitcalm.database import get_credentials, import_db
 
 
@@ -90,8 +91,9 @@ def decompress(zipped, unzipped=None, delete=True):
     return unzipped
 
 
-def upload(key_name, filepath, **kwargs):
-    bucket = get_bucket()
+def upload(key_name, filepath, bucket=None, **kwargs):
+    if not bucket:
+        bucket = get_bucket()
     size = os.stat(filepath).st_size
     if size > CHUNK_SIZE:
         chunks = int(math.ceil(size / float(CHUNK_SIZE)))
@@ -129,20 +131,113 @@ def download(key, path):
     return 0
 
 
-def backup(key_name, filename):
+class BackupHandler(object):
+    def __init__(self, backup_id):
+        self.id = backup_id
+        self.bucket = get_bucket()
+        self.prefix, self.prefix_fs, self.prefix_db = get_prefixes(self.id)
+        self.size = 0
+        self.files_count = 0
+        self.db_count = 0
+
+    def __enter__(self):
+        if not self.bucket:
+            self.bucket = get_bucket()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.files_count:
+            self.upload_fs_info()
+        self.upload_stats()
+
+    def get_fs_keyname(self, filename):
+        return '%s%s.gz' % (self.prefix_fs, filename.lstrip('/'))
+
+    def get_db_keyname(self, filename):
+        return os.path.join(self.prefix_db, os.path.basename(filename))
+
+    def _backup(self, keyname, filename):
+        size = backup(keyname, filename, bucket=self.bucket)
+        self.size += size
+        return size
+
+    def upload_file(self, filename):
+        """ compress and upload file
+        """
+        size = self._backup(self.get_fs_keyname(filename), filename)
+        self.files_count += 1
+        return size
+
+    def upload_db(self, path):
+        """ upload dump file
+        """
+        size = upload(self.get_db_keyname(path), path, bucket=self.bucket)
+        self.db_count += 1
+        return size
+
+    def upload_fs_info(self):
+        return backup(self.prefix + os.path.basename(status.backupdb.db),
+                      status.backupdb.db,
+                      bucket=self.bucket)
+
+    def upload_stats(self):
+        if not self.has_stats():
+            return True
+        if api.update_backup_stats(self.id,
+                                   size=self.size,
+                                   files=self.files_count,
+                                   db=self.db_count) == 200:
+            self.reset_stats()
+            return True
+        return False
+
+    def has_stats(self):
+        return any((self.size, self.files_count, self.db_count))
+
+    def reset_stats(self):
+        self.size = self.files_count = self.db_count = 0
+
+
+def backup(key_name, filename, bucket=None):
     gzipped = compress(filename)
     if not gzipped:
         return 0
     try:
-        size = upload(key_name, gzipped)
+        size = upload(key_name, gzipped, bucket=bucket)
     finally:
         os.remove(gzipped)
     return size
 
 
+def get_database(backup_id, path=None):
+    """ path is path where to decompress database; default is main db.
+        Returns:
+            -1 if database wasn't found;
+            0 on success;
+            number of bytes of compressed database if there is not enough free space for it.
+    """
+    basename = os.path.basename(status.backupdb.db)
+    key = get_prefix(backup_id) + basename
+    gzipped = os.path.join('/tmp', basename)
+    result = download(key, gzipped)
+    if result:
+        return result
+    decompress(gzipped, unzipped=path or status.backupdb.db)
+    return 0
+
+
+def get_files(backup_id):
+    restore_db = '/tmp/bitcalm_restore.db'
+    error = get_database(backup_id, path=restore_db)
+    if error:
+        return None
+    files = BackupData(dbpath=restore_db).files(backup_id)
+    os.remove(restore_db)
+    return files
+
+
 def restore(backup_id):
     bucket = get_bucket()
-    files = status.backupdb.files(backup_id)
+    files = status.backupdb.files(backup_id) or get_files(backup_id)
     if not files:
         s, files = api.get_files_info(backup_id)
         if s == 200:

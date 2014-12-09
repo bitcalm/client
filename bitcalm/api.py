@@ -119,7 +119,7 @@ class Api(object):
     
     def set_backup_info(self, status, **kwargs):
         backup_id = kwargs.pop('backup_id', None)
-        allowed = ('time', 'size', 'schedule', 'has_info')
+        allowed = ('time', 'schedule', 'has_info')
         data = {}
         for k, v in kwargs.iteritems():
             if k in allowed:
@@ -134,14 +134,17 @@ class Api(object):
                 c = json.loads(c)
         return s, c
 
-    def upload_files_info(self, backup_id, files):
-        files = json.dumps(files)
-        return self._send('backup/%i/files' % backup_id,
-                          data={'files': files})[0]
-
     @returns_json
     def get_files_info(self, backup_id):
         return self._send('backup/%i/files' % backup_id, method='GET')
+
+    def update_backup_stats(self, backup_id, size=0, files=0, db=0):
+        """ increases backup statistics
+        """
+        return self._send('backup/stat', data={'id': backup_id,
+                                               'size': size,
+                                               'files': files,
+                                               'db': db})[0]
     
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]

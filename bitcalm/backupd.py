@@ -252,10 +252,7 @@ def make_backup():
                                                 schedule=schedule.id)
         if status != 200:
             return False
-        client_status.backup = {'backup_id': backup_id,
-                                'status': 0,
-                                'size': 0,
-                                'bfiles': []}
+        client_status.backup = {'backup_id': backup_id, 'status': 0}
         client_status.save()
     else:
         backup_id = client_status.backup['backup_id']
@@ -264,17 +261,15 @@ def make_backup():
         schedule.clean_files()
         if bstatus['status'] == 0:
             status, content = api.set_backup_info(
-                                    'filesystem',
-                                    backup_id=backup_id,
-                                    has_info=bool(client_status.backupdb.count()))
+                                'filesystem',
+                                backup_id=backup_id,
+                                has_info=bool(client_status.backupdb.count()))
             if status == 200:
                 bstatus['is_full'] = content['is_full']
                 if bstatus['is_full']:
                     client_status.backupdb.clean()
-                elif 'info' in content:
-                    rows = [(k, ) + v for k, v in content['info'].iteritems()]
-                    del content
-                    client_status.backupdb.add(rows)
+                elif 'prev' in content:
+                    backup.get_database(int(content['prev']))
             else:
                 return False
             bstatus['status'] = 1
@@ -285,41 +280,30 @@ def make_backup():
                                 'files': filter(os.path.isfile,
                                                 schedule.files)}
             client_status.save()
-        key_prefix = backup.get_prefix(backup_id,
-                                       ptype=backup.PREFIX_TYPE.FS)[:-1]
-        make_key = lambda f, p=key_prefix: '%s%s.gz' % (p, f)
 
         files = iterfiles(files=bstatus['items']['files'],
                           dirs=bstatus['items']['dirs'])
         if not bstatus['is_full']:
             files = modified(files, client_status.backupdb)
 
-        for filename in files:
-            key = make_key(filename)
-            try:
-                info = os.stat(filename)
-            except OSError:
-                continue
-            bstatus['size'] += backup.backup(key, filename)
-            row = (filename,
-                   info.st_mtime,
-                   info.st_size,
-                   info.st_mode,
-                   info.st_uid,
-                   info.st_gid,
-                   backup_id)
-            client_status.backupdb.add((row,))
-            bstatus['bfiles'].append(row[:-1])
-            if len(bstatus['bfiles']) >= 100:
-                if api.upload_files_info(backup_id,
-                                         bstatus['bfiles']) == 200:
-                    bstatus['bfiles'] = []
-            client_status.save()
-
-        if bstatus['bfiles']:
-            status = api.upload_files_info(backup_id, bstatus['bfiles'])
-            bstatus['bfiles'] = []
-            client_status.save()
+        with backup.BackupHandler(backup_id) as handler:
+            for filename in files:
+                try:
+                    info = os.stat(filename)
+                except OSError:
+                    continue
+                handler.upload_file(filename)
+                row = (filename,
+                       info.st_mtime,
+                       info.st_size,
+                       info.st_mode,
+                       info.st_uid,
+                       info.st_gid,
+                       backup_id)
+                client_status.backupdb.add((row,))
+                client_status.save()
+                if handler.files_count >= 100:
+                    handler.upload_stats()
 
     if schedule.databases and bstatus['status'] < 3:
         if bstatus['status'] != 2:
@@ -342,30 +326,28 @@ def make_backup():
         for db in itertools.chain(config.database, client_status.database):
             key = make_key(db['host'], db.get('port', DEFAULT_DB_PORT))
             db_creds[key] = (db['user'], db['passwd'])
-        key_prefix = backup.get_prefix(backup_id, ptype=backup.PREFIX_TYPE.DB)
         db_success = 0
         db_total = len(bstatus['databases'])
-        while bstatus['databases']:
-            host, port, name = bstatus['databases'].pop()
-            try:
-                user, passwd = db_creds[make_key(host, port)]
-            except KeyError:
-                log.error('There are no credentials for %s:%i' % (host, port))
+        with backup.BackupHandler(backup_id) as handler:
+            while bstatus['databases']:
+                host, port, name = bstatus['databases'].pop()
+                try:
+                    user, passwd = db_creds[make_key(host, port)]
+                except KeyError:
+                    log.error('There are no credentials for %s:%i' % (host, port))
+                    client_status.save()
+                    continue
+                ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
+                path = '/tmp/%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
+                if not dump_db(name, host, user,
+                               path=path, passwd=passwd, port=port):
+                    log.error('Dump of %s from %s:%i failed' % (name, host, port))
+                    client_status.save()
+                    continue
+                handler.upload_db(path)
+                handler.upload_stats()
                 client_status.save()
-                continue
-            ts = datetime.utcnow().strftime('%Y.%m.%d_%H%M')
-            filename = '%s_%i_%s_%s.sql.gz' % (host, port, name, ts)
-            path = '/tmp/' + filename
-            if not dump_db(name, host, user,
-                           path=path, passwd=passwd, port=port):
-                log.error('Dump of %s from %s:%i failed' % (name, host, port))
-                client_status.save()
-                continue
-            bstatus['size'] += backup.upload(os.path.join(key_prefix,
-                                                          filename),
-                                             path)
-            client_status.save()
-            db_success += 1
+                db_success += 1
         if db_success != db_total:
             log.error('%i of %i databases was backuped' % (db_success, db_total))
 
@@ -373,9 +355,7 @@ def make_backup():
     client_status.save()
     api.set_backup_info('complete',
                         backup_id=backup_id,
-                        time=time.time(),
-                        size=bstatus['size'],
-                        files=bstatus['bfiles'])
+                        time=time.time())
     client_status.backup = None
     backup.next_schedule().done()
     client_status.save()
