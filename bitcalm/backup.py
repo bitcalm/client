@@ -143,6 +143,7 @@ class BackupHandler(object):
     def __enter__(self):
         if not self.bucket:
             self.bucket = get_bucket()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.files_count:
