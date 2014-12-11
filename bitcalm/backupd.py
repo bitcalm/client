@@ -236,6 +236,8 @@ def check_changes():
         tasks = content.get('restore')
         if tasks:
             actions.add(OneTimeAction(30, restore, tasks))
+        if content.get('log_tail', False):
+            actions.add(OneTimeAction(0, upload_log, entries=tail_log()))
         return True
     elif status == 304:
         return True
