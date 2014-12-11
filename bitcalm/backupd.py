@@ -20,7 +20,7 @@ import log
 import backup
 import bitcalm
 from bitcalm.utils import total_seconds
-from bitcalm.const import KB, MIN, DAY
+from bitcalm.const import KB, MIN, HOUR, DAY
 from config import config, status as client_status
 from api import api
 from filesystem.utils import levelwalk, iterfiles, modified
@@ -87,6 +87,22 @@ def upload_log(entries=log.upload):
         del entries[:len(current)]
         return True
     return False
+
+
+def tail_log(last=10*KB, path=log.LOG_PATH):
+    if not os.path.exists(path):
+        return []
+    log_size = os.stat(path).st_size
+    if not log_size:
+        return []
+    with open(log.LOG_PATH) as f:
+        if log_size > last:
+            f.seek(log_size - last)
+        data = f.read()
+    data = data.split('\n')
+    if len(data) > 1:
+        data = data[1:]
+    return data
 
 
 def get_s3_access():
@@ -399,26 +415,109 @@ def report_crash():
     return success
 
 
-def immortal(func):
-    def inner():
-        def restart():
-            t = Thread(target=func)
-            t.setDaemon(True)
-            t.start()
-            return t
-        t = restart()
+class EmergencyWorker(object):
+    """ Send last 10 KB of log and waits for commands.
+        Possible commands are:
+            - send log;
+            - update/rollback;
+            - run main thread immediately;
+            - do not run main thread until command received;
+            - try to run main thread hourly.
+    """
+    ITERPERIOD = 5*MIN
+
+    def __call__(self):
+        self.upload_log()
+        brake = False
+        work_till = datetime.utcnow() + timedelta(seconds=HOUR)
+        while brake or datetime.utcnow() < work_till:
+            iterstart = datetime.utcnow()
+            status, commands = api.emergency()
+            if status == 200:
+                if 'version' in commands:
+                    ver, url = commands['version']
+                    if ver != bitcalm.__version__:
+                        update(url)
+                else:
+                    worker = commands.get('worker', 0)
+                    # possible worker values are:
+                    #     -1 - do not run main thread
+                    #     0 - try to run main thread (default)
+                    #     1 - run main thread immediately
+                    if not -1 <= worker <= 1:
+                        self.log('wrong worker status (%i)' % worker)
+                    elif worker == 1:
+                        return
+                    else:
+                        brake = bool(worker)
+                    if commands.get('log', False):
+                        self.upload_log()
+            else:
+                self.log('commands receiving failed with status %i' % status)
+            itertime = (datetime.utcnow() - iterstart).total_seconds()
+            if itertime < self.ITERPERIOD:
+                time.sleep(self.ITERPERIOD - itertime)
+
+    def log(self, msg):
+        log.info('Emergency: %s' % msg)
+
+    def upload_log(self):
+        self.log('trying to upload log')
+        success = upload_log(entries=tail_log())
+        self.log('log uploaded' if success else 'log upload failed')
+        return success
+
+
+class Observer(object):
+    """ Runs observed function in a separate thread.
+        If function works less than a minute:
+            - after 3 crashes it restarting with a one minute interval;
+            - after 10 crashes runs the emergency worker.
+    """
+    def __init__(self, func):
+        self.worker = func
+        self.errors = 0
+        self.worker_started = None
+
+    def __call__(self):
+        t = self.start_worker()
         while True:
             t.join(2**31)
             if not t.is_alive():
-                c = Thread(target=report_crash)
-                c.setDaemon(True)
-                c.start()
+                worktime = self.get_work_period()
+                c = self.get_thread(func=report_crash)
                 c.join(2**31)
-                t = restart()
-    return inner
+                if worktime < MIN:
+                    self.errors += 1
+                    if self.errors >= 10:
+                        log.info('Start emergency thread')
+                        t = self.get_thread(EmergencyWorker())
+                        t.join(2**31)
+                        log.info('Emergency thread stopped')
+                    elif self.errors >= 3:
+                        time.sleep(MIN)
+                else:
+                    self.errors = 0
+                t = self.start_worker()
+
+    def get_thread(self, func, start=True):
+        t = Thread(target=func)
+        t.setDaemon(True)
+        if start:
+            t.start()
+        return t
+
+    def get_work_period(self):
+        if not self.worker_started:
+            return 0
+        return (datetime.utcnow() - self.worker_started).total_seconds()
+
+    def start_worker(self):
+        self.worker_started = datetime.utcnow()
+        log.info('Starting worker thread')
+        return self.get_thread(func=self.worker)
 
 
-@immortal
 def work():
     if not client_status.is_actual_version():
         check_update()
@@ -492,8 +591,7 @@ def run():
                                         log.logger.handlers))
     print 'Starting daemon'
     with context:
-        log.info('Daemon started')
-        work()
+        Observer(work)()
 
 
 def get_pid():

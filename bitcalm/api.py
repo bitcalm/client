@@ -181,5 +181,12 @@ class Api(object):
     def get_version(self):
         return self._send('version/current', method='GET')
 
+    @returns_json
+    def emergency(self):
+        data = {'emer': 1}
+        if client_status.last_ver_check:
+            data['v'] = __version__
+        return self._send('emergency', data=data)
+
 
 api = Api(config.host, config.port, config.uuid, client_status.key)

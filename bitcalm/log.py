@@ -2,6 +2,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 
+LOG_PATH = '/var/log/bitcalm.log'
+
+
 class ListHandler(logging.Handler):
     def __init__(self, upload, *args, **kwargs):
         logging.Handler.__init__(self, *args, **kwargs)
@@ -14,9 +17,7 @@ class ListHandler(logging.Handler):
 logger = logging.getLogger('bitcalm')
 logger.setLevel(logging.INFO)
 
-fh = RotatingFileHandler('/var/log/bitcalm.log',
-                         maxBytes=20*1024**2,
-                         backupCount=4)
+fh = RotatingFileHandler(LOG_PATH, maxBytes=20*1024**2, backupCount=4)
 fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s',
                         '%Y-%m-%d %H:%M:%S')
 fh.setFormatter(fmt)
