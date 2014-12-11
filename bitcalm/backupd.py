@@ -436,10 +436,8 @@ class EmergencyWorker(object):
             iterstart = datetime.utcnow()
             status, commands = api.emergency()
             if status == 200:
-                if 'version' in commands:
-                    ver, url = commands['version']
-                    if ver != bitcalm.__version__:
-                        update(url)
+                if 'update' in commands:
+                    update(commands['update'])
                 else:
                     worker = commands.get('worker', 0)
                     # possible worker values are:
