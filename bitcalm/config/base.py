@@ -169,6 +169,7 @@ class BackupData(object):
                     'uid INTEGER',
                     'gid INTEGER',
                     'backup_id INTEGER')
+        _BACKUP_LIMIT = """ WHERE backup_id <= ?"""
         DROP = """DROP TABLE IF EXISTS %s""" % _TABLE_NAME
         CREATE = """CREATE TABLE %s (%s)""" % (_TABLE_NAME,
                                                ', '.join(_COLUMNS))
@@ -176,8 +177,9 @@ class BackupData(object):
         INSERT = """INSERT OR REPLACE INTO %s VALUES(%s)""" % (_TABLE_NAME,
                                                                ','.join('?'*len(_COLUMNS)))
         COUNT = """SELECT COUNT(*) FROM %s""" % _TABLE_NAME
+        COUNT_BACKUP = COUNT + _BACKUP_LIMIT
         FILES_ALL = """SELECT path, backup_id FROM backup"""
-        FILES = FILES_ALL + """ WHERE backup_id <= ?"""
+        FILES = FILES_ALL + _BACKUP_LIMIT
 
     def __init__(self, dbpath):
         self.db = dbpath
@@ -216,15 +218,33 @@ class BackupData(object):
             cur.execute(self.QUERY.INSERT, rows[0])
         conn.commit()
 
-    @connect
-    def files(self, backup_id=None, **kwargs):
+    def files(self, backup_id=None, iterator=False, **kwargs):
         args = (self.QUERY.FILES,
                 (backup_id,)) if backup_id else (self.QUERY.FILES_ALL,)
+        if iterator:
+            if self.count(backup_id=backup_id):
+                return self._iterfiles(args)
+            return []
+        return self._listfiles(args)
+
+    @connect
+    def _listfiles(self, args, **kwargs):
         cur = kwargs['cur']
         cur.execute(*args)
         return cur.fetchall()
 
+    def _iterfiles(self, args, **kwargs):
+        conn, cur = self._connect()
+        for row in cur.execute(*args):
+            yield row
+        cur.close()
+        conn.close()
+
     @connect
-    def count(self, conn, cur):
-        cur.execute(self.QUERY.COUNT)
+    def count(self, conn, cur, backup_id=None):
+        if backup_id:
+            args = (self.QUERY.COUNT_BACKUP, (backup_id,))
+        else:
+            args = (self.QUERY.COUNT,)
+        cur.execute(*args)
         return cur.fetchone()[0]

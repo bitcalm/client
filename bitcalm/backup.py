@@ -15,6 +15,8 @@ from bitcalm.database import get_credentials, import_db
 
 CHUNK_SIZE = 32 * 1024 * 1024
 MB = 1024 * 1024
+RESTORE_DB_PATH = '/tmp/bitcalm_restore.db'
+
 
 class PREFIX_TYPE:
     FS = 'filesystem/'
@@ -227,18 +229,18 @@ def get_database(backup_id, path=None):
 
 
 def get_files(backup_id):
-    restore_db = '/tmp/bitcalm_restore.db'
-    error = get_database(backup_id, path=restore_db)
+    error = get_database(backup_id, path=RESTORE_DB_PATH)
     if error:
         return None
-    files = BackupData(dbpath=restore_db).files(backup_id)
-    os.remove(restore_db)
+    files = BackupData(dbpath=RESTORE_DB_PATH).files(backup_id=backup_id,
+                                                     iterator=True)
     return files
 
 
 def restore(backup_id):
     bucket = get_bucket()
-    files = status.backupdb.files(backup_id) or get_files(backup_id)
+    files = status.backupdb.files(backup_id=backup_id,
+                                  iterator=True) or get_files(backup_id)
     if not files:
         s, files = api.get_files_info(backup_id)
         if s == 200:
@@ -246,8 +248,7 @@ def restore(backup_id):
         else:
             return 'Failed to request the list of files'
     backup_prefixes = {}
-    while files:
-        path, b_id = files.pop()
+    for path, b_id in files:
         prefix = backup_prefixes.get(b_id)
         if not prefix:
             prefix = get_prefix(b_id, ptype=PREFIX_TYPE.FS)
@@ -259,6 +260,9 @@ def restore(backup_id):
         if download(key, gzipped):
             return 'Need at least %i bytes free' % key.size
         decompress(gzipped, path)
+
+    if os.path.exists(RESTORE_DB_PATH):
+        os.remove(RESTORE_DB_PATH)
 
     prefix = get_prefix(backup_id, ptype=PREFIX_TYPE.DB)
     db_keys = bucket.get_all_keys(prefix=prefix)
