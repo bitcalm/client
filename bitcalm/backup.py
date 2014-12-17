@@ -39,7 +39,7 @@ def get_bucket():
 
 
 def get_prefix(backup_id, ptype=''):
-    return '/'.join((status.amazon['username'],
+    return '/'.join((status.amazon['username'].encode('ascii'),
                      'backup_%i' % backup_id,
                      ptype))
 
