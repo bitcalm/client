@@ -149,7 +149,7 @@ def update(url):
         tar = tarfile.open(filename)
         tar.extractall(dst)
         tar.close()
-        subprocess.check_call(('python2.7', 'setup.py', 'install'), cwd=dst)
+        subprocess.check_call(('python', 'setup.py', 'install'), cwd=dst)
     else:
         pip.main(['uninstall', '-qy', 'bitcalm'])
         pip.main(['install', '-q', filename])
