@@ -3,7 +3,6 @@ import sys
 
 
 from bitcalm.const import IGNORE_DIRS
-from bitcalm.api import api
 
 
 FS_ENCODING = sys.getfilesystemencoding()
@@ -73,8 +72,8 @@ def levelwalk(top='/', depth=-1, start=None):
 
 
 def iterfiles(files=None, dirs=None):
-    files = [f.encode(FS_ENCODING) for f in files] if files else []
-    dirs = [d.encode(FS_ENCODING) for d in dirs] if dirs else []
+    files = files or []
+    dirs = dirs or []
     while files or dirs:
         while files:
             yield files.pop()
@@ -83,6 +82,11 @@ def iterfiles(files=None, dirs=None):
         path = dirs.pop()
         ls = os.listdir(path)
         for item in ls:
+            if not isinstance(item, unicode):
+                try:
+                    item = item.decode(FS_ENCODING)
+                except UnicodeDecodeError:
+                    continue
             item = os.path.join(path, item)
             if os.path.islink(item):
                 continue

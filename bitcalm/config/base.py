@@ -198,7 +198,7 @@ class BackupData(object):
 
     @connect
     def get(self, path, conn, cur):
-        cur.execute(self.QUERY.GET_ROW, (unicode(path),))
+        cur.execute(self.QUERY.GET_ROW, (path,))
         row = cur.fetchone()
         return row
 
