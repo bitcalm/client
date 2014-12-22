@@ -171,14 +171,13 @@ class BackupHandler(object):
         """ compress if necessary and upload file
         """
         need_to_compress = not is_file_compressed(filename)
+        key_name = self.get_fs_keyname(filename, need_to_compress)
         if need_to_compress:
             filename = compress(filename)
             if not filename:
                 return 0, False
         try:
-            size = upload(self.get_fs_keyname(filename, need_to_compress),
-                          filename,
-                          bucket=self.bucket)
+            size = upload(key_name, filename, bucket=self.bucket)
         finally:
             if need_to_compress:
                 os.remove(filename)
