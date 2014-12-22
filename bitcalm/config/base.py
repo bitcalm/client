@@ -168,6 +168,7 @@ class BackupData(object):
                     'mode INTEGER',
                     'uid INTEGER',
                     'gid INTEGER',
+                    'compress INTEGER default 1', # was compressed while performing backup
                     'backup_id INTEGER')
         _BACKUP_LIMIT = """ WHERE backup_id <= ?"""
         DROP = """DROP TABLE IF EXISTS %s""" % _TABLE_NAME
@@ -178,13 +179,23 @@ class BackupData(object):
                                                                ','.join('?'*len(_COLUMNS)))
         COUNT = """SELECT COUNT(*) FROM %s""" % _TABLE_NAME
         COUNT_BACKUP = COUNT + _BACKUP_LIMIT
-        FILES_ALL = """SELECT path, backup_id FROM backup"""
+        FILES_ALL = """SELECT path, backup_id, compress FROM backup"""
         FILES = FILES_ALL + _BACKUP_LIMIT
 
     def __init__(self, dbpath):
         self.db = dbpath
         if not os.path.exists(self.db):
             self.clean()
+        else:
+            query = """ALTER TABLE %s ADD COLUMN %s""" \
+                        % (self.QUERY._TABLE_NAME, self.QUERY._COLUMNS[6])
+            conn, cur = self._connect()
+            try:
+                cur.execute(query)
+            except sqlite3.OperationalError:
+                pass
+            cur.close()
+            conn.close()
 
     def _connect(self):
         conn = sqlite3.connect(self.db)

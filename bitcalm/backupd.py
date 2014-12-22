@@ -310,13 +310,14 @@ def make_backup():
                     info = os.stat(filename)
                 except OSError:
                     continue
-                handler.upload_file(filename)
+                result = handler.upload_file(filename)
                 row = (filename,
                        info.st_mtime,
                        info.st_size,
                        info.st_mode,
                        info.st_uid,
                        info.st_gid,
+                       int(result[1]),
                        backup_id)
                 client_status.backupdb.add((row,))
                 client_status.save()

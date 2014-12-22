@@ -10,6 +10,7 @@ from bitcalm import log
 from bitcalm.api import api
 from bitcalm.config import status
 from bitcalm.config.base import BackupData
+from bitcalm.utils import is_file_compressed
 from bitcalm.database import get_credentials, import_db
 
 
@@ -114,7 +115,7 @@ def upload(key_name, filepath, bucket=None, **kwargs):
     return size
 
 
-def download(key, path):
+def download(key, path, check_space=True):
     """ Returns:
             -1 if key wasn't found;
             0 on success;
@@ -127,7 +128,7 @@ def download(key, path):
             key = k
         else:
             return -1
-    if available_space(path=os.path.dirname(path)) < key.size:
+    if check_space and available_space(path=os.path.dirname(path)) < key.size:
         return key.size
     key.get_contents_to_filename(path)
     return 0
@@ -159,16 +160,17 @@ class BackupHandler(object):
         return os.path.join(self.prefix_db, os.path.basename(filename))
 
     def _backup(self, keyname, filename):
-        size = backup(keyname, filename, bucket=self.bucket)
+        size, was_compressed = backup(keyname, filename, bucket=self.bucket)
         self.size += size
-        return size
+        return size, was_compressed
 
     def upload_file(self, filename):
         """ compress and upload file
         """
-        size = self._backup(self.get_fs_keyname(filename), filename)
+        size, was_compressed = self._backup(self.get_fs_keyname(filename),
+                                            filename)
         self.files_count += 1
-        return size
+        return size, was_compressed
 
     def upload_db(self, path):
         """ upload dump file
@@ -201,14 +203,17 @@ class BackupHandler(object):
 
 
 def backup(key_name, filename, bucket=None):
-    gzipped = compress(filename)
-    if not gzipped:
-        return 0
+    need_to_compress = not is_file_compressed(filename)
+    if need_to_compress:
+        filename = compress(filename)
+        if not filename:
+            return 0, False
     try:
-        size = upload(key_name, gzipped, bucket=bucket)
+        size = upload(key_name, filename, bucket=bucket)
     finally:
-        os.remove(gzipped)
-    return size
+        if need_to_compress:
+            os.remove(filename)
+    return size, need_to_compress
 
 
 def get_database(backup_id, path=None):
@@ -244,11 +249,12 @@ def restore(backup_id):
     if not files:
         s, files = api.get_files_info(backup_id)
         if s == 200:
-            files = files.items()
+            files = ((path, b_id, True) for path, b_id in files.items())
         else:
             return 'Failed to request the list of files'
     backup_prefixes = {}
-    for path, b_id in files:
+    low_space_msg = 'Need at least %i bytes free'
+    for path, b_id, compressed in files:
         prefix = backup_prefixes.get(b_id)
         if not prefix:
             prefix = get_prefix(b_id, ptype=PREFIX_TYPE.FS)
@@ -256,10 +262,18 @@ def restore(backup_id):
         key = bucket.get_key(make_key(prefix, path))
         if not key:
             continue
-        gzipped = '/tmp' + os.path.basename(path)
-        if download(key, gzipped):
-            return 'Need at least %i bytes free' % key.size
-        decompress(gzipped, path)
+        if compressed:
+            gzipped = '/tmp' + os.path.basename(path)
+            if download(key, gzipped):
+                return low_space_msg % key.size
+            decompress(gzipped, path)
+        else:
+            av_space = available_space(path=os.path.dirname(path))
+            if os.path.exists(path):
+                av_space += os.stat(path).st_size
+            if av_space < key.size:
+                return low_space_msg
+            download(key, path, check_space=False)
 
     if os.path.exists(RESTORE_DB_PATH):
         os.remove(RESTORE_DB_PATH)
