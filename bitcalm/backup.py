@@ -321,5 +321,11 @@ def restore(backup_id):
 
 
 def available_space(path='/tmp/'):
-    stats = os.statvfs(path)
+    try:
+        stats = os.statvfs(path)
+    except OSError, e:
+        if e.errno == 2:
+            return available_space(os.path.dirname(path))
+        else:
+            raise e
     return stats.f_bavail * stats.f_frsize
