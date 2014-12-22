@@ -54,8 +54,10 @@ def get_prefixes(backup_id):
             root_prefix + PREFIX_TYPE.DB)
 
 
-def make_key(prefix, path):
-    return '%s%s.gz' % (prefix, path.lstrip('/'))
+def make_key(prefix, path, compressed=True):
+    return ''.join((prefix,
+                    path.lstrip('/'),
+                    '.gz' if compressed else ''))
 
 
 def chunks(fileobj, chunk_size=4*MB):
@@ -153,24 +155,35 @@ class BackupHandler(object):
             self.upload_fs_info()
         self.upload_stats()
 
-    def get_fs_keyname(self, filename):
-        return '%s%s.gz' % (self.prefix_fs, filename.lstrip('/'))
+    def get_fs_keyname(self, filename, compressed):
+        """ compressed means that file was compressed by bitcalm client.
+        """
+        return make_key(self.prefix_fs,
+                        filename.lstrip('/'),
+                        compressed=compressed)
 
     def get_db_keyname(self, filename):
-        return os.path.join(self.prefix_db, os.path.basename(filename))
-
-    def _backup(self, keyname, filename):
-        size, was_compressed = backup(keyname, filename, bucket=self.bucket)
-        self.size += size
-        return size, was_compressed
+        return make_key(self.prefix_db,
+                        os.path.basename(filename),
+                        compressed=True)
 
     def upload_file(self, filename):
-        """ compress and upload file
+        """ compress if necessary and upload file
         """
-        size, was_compressed = self._backup(self.get_fs_keyname(filename),
-                                            filename)
+        need_to_compress = not is_file_compressed(filename)
+        if need_to_compress:
+            filename = compress(filename)
+            if not filename:
+                return 0, False
+        try:
+            size = upload(self.get_fs_keyname(filename, need_to_compress),
+                          filename,
+                          bucket=self.bucket)
+        finally:
+            if need_to_compress:
+                os.remove(filename)
         self.files_count += 1
-        return size, was_compressed
+        return size, need_to_compress
 
     def upload_db(self, path):
         """ upload dump file
@@ -259,7 +272,7 @@ def restore(backup_id):
         if not prefix:
             prefix = get_prefix(b_id, ptype=PREFIX_TYPE.FS)
             backup_prefixes[b_id] = prefix
-        key = bucket.get_key(make_key(prefix, path))
+        key = bucket.get_key(make_key(prefix, path, compressed=compressed))
         if not key:
             continue
         if compressed:
