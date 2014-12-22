@@ -282,7 +282,10 @@ def restore(backup_id):
                 return low_space_msg % key.size
             decompress(gzipped, path)
         else:
-            av_space = available_space(path=os.path.dirname(path))
+            dirname = os.path.dirname(path)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+            av_space = available_space(path=dirname)
             if os.path.exists(path):
                 av_space += os.stat(path).st_size
             if av_space < key.size:
