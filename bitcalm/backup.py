@@ -182,6 +182,7 @@ class BackupHandler(object):
             if need_to_compress:
                 os.remove(filename)
         self.files_count += 1
+        self.size += size
         return size, need_to_compress
 
     def upload_db(self, path):
@@ -189,6 +190,7 @@ class BackupHandler(object):
         """
         size = upload(self.get_db_keyname(path), path, bucket=self.bucket)
         self.db_count += 1
+        self.size += size
         return size
 
     def upload_fs_info(self):
