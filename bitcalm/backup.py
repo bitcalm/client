@@ -1,6 +1,7 @@
 import os
 import math
 import gzip
+from hashlib import sha384 as sha
 
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
@@ -54,10 +55,16 @@ def get_prefixes(backup_id):
             root_prefix + PREFIX_TYPE.DB)
 
 
-def make_key(prefix, path, compressed=True):
-    return ''.join((prefix,
-                    path.lstrip('/'),
-                    '.gz' if compressed else ''))
+def make_path_fs_key(prefix, path, compressed=True):
+    return ''.join((prefix, path.lstrip('/'), '.gz' if compressed else ''))
+
+
+def make_hash_fs_key(prefix, path):
+    return prefix + sha(path).hexdigest()
+
+
+def make_db_key(prefix, path):
+    return prefix + os.path.basename(path)
 
 
 def chunks(fileobj, chunk_size=4*MB):
@@ -155,35 +162,20 @@ class BackupHandler(object):
             self.upload_fs_info()
         self.upload_stats()
 
-    def get_fs_keyname(self, filename, compressed):
-        """ compressed means that file was compressed by bitcalm client.
-        """
-        return make_key(self.prefix_fs,
-                        filename.lstrip('/'),
-                        compressed=compressed)
+    def get_fs_keyname(self, filename):
+        return make_hash_fs_key(self.prefix_fs, filename)
 
     def get_db_keyname(self, filename):
-        return make_key(self.prefix_db,
-                        os.path.basename(filename),
-                        compressed=True)
+        return make_db_key(self.prefix_db, filename)
 
     def upload_file(self, filename):
         """ compress if necessary and upload file
         """
-        need_to_compress = not is_file_compressed(filename)
-        key_name = self.get_fs_keyname(filename, need_to_compress)
-        if need_to_compress:
-            filename = compress(filename)
-            if not filename:
-                return 0, False
-        try:
-            size = upload(key_name, filename, bucket=self.bucket)
-        finally:
-            if need_to_compress:
-                os.remove(filename)
+        key_name = self.get_fs_keyname(filename)
+        size, compress = backup(key_name, filename, bucket=self.bucket)
         self.files_count += 1
         self.size += size
-        return size, need_to_compress
+        return size, compress
 
     def upload_db(self, path):
         """ upload dump file
@@ -268,12 +260,16 @@ def restore(backup_id):
             return 'Failed to request the list of files'
     backup_prefixes = {}
     low_space_msg = 'Need at least %i bytes free'
-    for path, b_id, compressed in files:
+    for path, b_id, hash_key, compressed in files:
         prefix = backup_prefixes.get(b_id)
         if not prefix:
             prefix = get_prefix(b_id, ptype=PREFIX_TYPE.FS)
             backup_prefixes[b_id] = prefix
-        key = bucket.get_key(make_key(prefix, path, compressed=compressed))
+        if hash_key:
+            keyname = make_hash_fs_key(prefix, path)
+        else:
+            keyname = make_path_fs_key(prefix, path, compressed=compressed)
+        key = bucket.get_key(keyname)
         if not key:
             continue
         if compressed:

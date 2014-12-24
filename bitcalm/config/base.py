@@ -163,6 +163,7 @@ class BackupData(object):
     class QUERY:
         _TABLE_NAME = 'backup'
         _COLUMNS = ('path TEXT PRIMARY KEY',
+                    'hash_key INTEGER default 0',
                     'mtime FLOAT',
                     'size INTEGER',
                     'mode INTEGER',
@@ -179,7 +180,7 @@ class BackupData(object):
                                                                ','.join('?'*len(_COLUMNS)))
         COUNT = """SELECT COUNT(*) FROM %s""" % _TABLE_NAME
         COUNT_BACKUP = COUNT + _BACKUP_LIMIT
-        FILES_ALL = """SELECT path, backup_id, compress FROM backup"""
+        FILES_ALL = """SELECT path, backup_id, hash_key, compress FROM backup"""
         FILES = FILES_ALL + _BACKUP_LIMIT
 
     def __init__(self, dbpath):
@@ -187,13 +188,14 @@ class BackupData(object):
         if not os.path.exists(self.db):
             self.clean()
         else:
-            query = """ALTER TABLE %s ADD COLUMN %s""" \
-                        % (self.QUERY._TABLE_NAME, self.QUERY._COLUMNS[6])
             conn, cur = self._connect()
-            try:
-                cur.execute(query)
-            except sqlite3.OperationalError:
-                pass
+            for n in (1, 7):
+                query = """ALTER TABLE %s ADD COLUMN %s""" \
+                            % (self.QUERY._TABLE_NAME, self.QUERY._COLUMNS[n])
+                try:
+                    cur.execute(query)
+                except sqlite3.OperationalError:
+                    pass
             cur.close()
             conn.close()
 

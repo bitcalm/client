@@ -312,6 +312,7 @@ def make_backup():
                     continue
                 result = handler.upload_file(filename)
                 row = (filename,
+                       1,
                        info.st_mtime,
                        info.st_size,
                        info.st_mode,
