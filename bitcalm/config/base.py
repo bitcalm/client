@@ -189,6 +189,7 @@ class BackupData(object):
             self.clean()
         else:
             conn, cur = self._connect()
+            changed = False
             for n in (1, 7):
                 query = """ALTER TABLE %s ADD COLUMN %s""" \
                             % (self.QUERY._TABLE_NAME, self.QUERY._COLUMNS[n])
@@ -196,11 +197,29 @@ class BackupData(object):
                     cur.execute(query)
                 except sqlite3.OperationalError:
                     pass
+                else:
+                    changed = True
+            if changed:
+                tmp_table = 'backup_tmp'
+                queries = ["CREATE TABLE %s (%s)" \
+                                % (tmp_table, ', '.join(self.QUERY._COLUMNS))]
+                columns = (c.split(' ')[0] for c in self.QUERY._COLUMNS)
+                query = "INSERT INTO %s SELECT %s FROM %s"
+                query = query % (tmp_table,
+                                 ', '.join(columns),
+                                 self.QUERY._TABLE_NAME)
+                queries.append(query)
+                queries.append(self.QUERY.DROP)
+                queries.append("ALTER TABLE %s RENAME TO %s" \
+                                    % (tmp_table, self.QUERY._TABLE_NAME))
+                for query in queries:
+                    cur.execute(query)
             cur.close()
             conn.close()
 
     def _connect(self):
         conn = sqlite3.connect(self.db)
+        conn.text_factory = str
         return conn, conn.cursor()
 
     @connect
