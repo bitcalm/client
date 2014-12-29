@@ -9,6 +9,7 @@ from .exceptions import ConfigEntryError, ConfigSyntaxError
 
 
 DB_RE = re.compile('^((?:[\.\w]+)|(?:(?:\d{1,3}\.){3}\d{1,3}))(?::(\d+))?;(\w+)(?:;(\w+))?$')
+DATA_DIR = '/var/lib/bitcalm'
 
 
 class Config:
@@ -118,7 +119,7 @@ class Status(object):
                     option,
                     data.get(option, kwargs.get(option) \
                                         or Status.DEFAULT.get(option)))
-        self.backupdb = BackupData('/var/lib/bitcalm/backup.db')
+        self.backupdb = BackupData(os.path.join(DATA_DIR, 'backup.db'))
 
     def get_files(self):
         files = []

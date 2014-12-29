@@ -1,0 +1,54 @@
+#!/bin/bash
+confirm() {
+	local ans
+	if [ -n "$1" ] ; then
+   		read -n 1 -p "$1 (y/[a]): " ans
+	else
+   		read -n 1 ans
+	fi
+	echo "" 1>&2
+	[ "$ans" = "y" ] && return 0 || return 1
+}
+
+while [[ $# -gt 0 ]]; do
+	if [[ $1 == '--yes' ]]; then
+		pYes=1
+	fi
+	shift
+done
+
+if [[ ! $pYes -eq 1 ]]; then
+	confirm "Uninstall BitCalm?" || exit 0
+fi
+exit 0
+if [ "$(id -u)" != "0" ]; then
+   echo "BitCalm uninstall must be run as root"
+   exit 1
+fi
+
+has() {
+	which $1 > /dev/null 2> /dev/null
+	return $?
+}
+
+bitcalm stop
+
+if has update-rc.d; then
+	update-rc.d bitcalmd remove
+elif has chkconfig; then
+	chkconfig bitcalmd off
+	chkconfig --del bitcalmd
+fi
+
+python -c "from bitcalm.api import api;api.report_status('deleted')"
+
+if has pip; then
+	pip uninstall -qy bitcalm
+else
+	install_log=/var/lib/bitcalm/install.log
+	[ -r $install_log ] && cat $install_log | xargs rm
+fi
+rm -rf /var/lib/bitcalm
+rm -f /etc/bitcalm.conf
+rm -f /var/log/bitcalm.*
+rm -rf /tmp/bitcalm*
