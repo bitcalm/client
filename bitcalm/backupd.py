@@ -1,5 +1,6 @@
 #! /usr/bin/env python2.7
 import os
+import re
 import sys
 import signal
 import pickle
@@ -157,6 +158,17 @@ def update(url):
     return True
 
 
+def uninstall(verbose=True):
+    if verbose:
+        msg = 'Uninstall BitCalm? (yes/no): '
+        ans = raw_input(msg)
+        while not re.match(r'^([Yy]es|[Nn]o)$', ans):
+            ans = raw_input(msg)
+        if ans.lower() == 'no':
+            return
+    subprocess.Popen(('uninstall_bitcalm', '--yes'))
+
+
 def check_update():
     status, url = api.check_version()
     if status in (200, 304):
@@ -172,6 +184,9 @@ def check_update():
 def check_changes():
     status, content = api.get_changes()
     if status == 200:
+        if content.get('uninstall'):
+            uninstall(verbose=False)
+            stop()
         version = content.get('version')
         if version:
             ver, url = version
@@ -625,15 +640,17 @@ def start():
         run()
 
 
-def stop():
+def stop(verbose=True):
     pid = get_pid()
     if not pid:
-        print 'Bitcalm is not running'
+        if verbose:
+            print 'Bitcalm is not running'
         return True
     try:
         os.kill(pid, signal.SIGTERM)
     except OSError, e:
-        print 'Failed to terminate %(pid)i: %(e)s' % vars()
+        if verbose:
+            print 'Failed to terminate %(pid)i: %(e)s' % vars()
         return False
     return True
 
@@ -643,19 +660,22 @@ def restart():
         run()
 
 
-def usage():
-    exit('Usage: %s start|stop|restart' % os.path.basename(sys.argv[0]))
+def usage(actions):
+    return 'Usage: %s %s' % (os.path.basename(sys.argv[0]), '|'.join(actions))
 
 
 def main():
     if sys.version_info < (2, 6):
         exit('Please upgrade your python to 2.6 or newer')
-    if len(sys.argv) != 2:
-        usage()
     actions = {'start': start,
                'stop': stop,
-               'restart': restart}
-    func = actions.get(sys.argv[1], usage)
+               'restart': restart,
+               'uninstall': uninstall}
+    if len(sys.argv) != 2:
+        exit(usage(actions.keys()))
+    func = actions.get(sys.argv[1])
+    if not func:
+        exit(usage(actions.keys()))
     func()
 
 

@@ -162,6 +162,13 @@ class Api(object):
                           data={'time': when},
                           files={'info': zlib.compress(info, 9)})[0]
 
+    def report_status(self, status):
+        mapping = {'deleted': -4, 'terminated': -3}
+        if status not in mapping:
+            msg = 'Wrong status: %s. Allowed: %s' % (status, mapping.keys())
+            raise ValueError(msg)
+        return self._send('status', data={'status': mapping[status]})
+
     @returns_json
     def check_restore(self):
         return self._send('get/restore', method='GET')
