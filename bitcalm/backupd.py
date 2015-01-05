@@ -238,6 +238,12 @@ def check_changes():
             actions.add(OneTimeAction(30, restore, tasks))
         if content.get('log_tail', False):
             actions.add(OneTimeAction(0, upload_log, entries=tail_log()))
+        if content.get('send_fs', False):
+            fs_action = actions.get(update_fs)
+            if fs_action:
+                fs_action.delay(period=0)
+            else:
+                actions.add(StepAction(FS_SET_PERIOD, update_fs, start=0))
         return True
     elif status == 304:
         return True
