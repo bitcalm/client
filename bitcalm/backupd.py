@@ -390,6 +390,7 @@ def make_backup():
                 handler.upload_stats()
                 client_status.save()
                 db_success += 1
+                os.remove(path)
         if db_success != db_total:
             log.error('%i of %i databases was backuped' % (db_success, db_total))
 
