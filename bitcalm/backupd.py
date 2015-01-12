@@ -478,7 +478,7 @@ class EmergencyWorker(object):
                         self.upload_log()
             else:
                 self.log('commands receiving failed with status %i' % status)
-            itertime = (datetime.utcnow() - iterstart).total_seconds()
+            itertime = total_seconds(datetime.utcnow() - iterstart)
             if itertime < self.ITERPERIOD:
                 time.sleep(self.ITERPERIOD - itertime)
 
@@ -534,7 +534,7 @@ class Observer(object):
     def get_work_period(self):
         if not self.worker_started:
             return 0
-        return (datetime.utcnow() - self.worker_started).total_seconds()
+        return total_seconds(datetime.utcnow() - self.worker_started)
 
     def start_worker(self):
         self.worker_started = datetime.utcnow()
