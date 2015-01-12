@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import errno
 import signal
 import pickle
 import time
@@ -635,9 +636,17 @@ def get_pid():
 def start():
     pid = get_pid()
     if pid:
-        print 'Bitcalm is running, pid %i' % pid
-    else:
-        run()
+        try:
+            os.kill(pid, 0)
+        except OSError, e:
+            running = e.errno == errno.EPERM
+        else:
+            running = True
+        if running:
+            exit('Bitcalm is running, pid %i' % pid)
+        else:
+            os.remove(PIDFILE_PATH)
+    run()
 
 
 def stop(verbose=True):
