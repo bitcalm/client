@@ -22,9 +22,11 @@ SCRIPTNAME=/etc/init.d/$NAME
 
 if [ -r /etc/init.d/functions ]; then
 	. /etc/init.d/functions
+	status=status
 else
 	. /lib/init/vars.sh
 	. /lib/lsb/init-functions
+	status=status_of_proc
 fi
 
 do_start()
@@ -66,7 +68,7 @@ case "$1" in
 	esac
 	;;
   status)
-	status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+	$status "$DAEMON" "$NAME" && exit 0 || exit $?
 	;;
   restart|force-reload)
 	log_daemon_msg "Restarting $DESC" "$NAME"
