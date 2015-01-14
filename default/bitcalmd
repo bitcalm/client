@@ -32,7 +32,7 @@ fi
 do_start()
 {
 	if [ -e $PIDFILE ]; then
-		status_of_proc -p $PIDFILE $DAEMON "$NAME process" && status="0" || status="$?"
+		$status -p $PIDFILE $DAEMON "$NAME process" && status="0" || status="$?"
 		if [ $status = "0" ]; then
 			return 1
 		fi
