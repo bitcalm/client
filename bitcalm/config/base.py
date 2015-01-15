@@ -2,7 +2,7 @@ import os
 import re
 import pickle
 import sqlite3
-from uuid import uuid1
+from uuid import uuid4
 from datetime import datetime, timedelta
 
 from .exceptions import ConfigEntryError, ConfigSyntaxError
@@ -111,7 +111,7 @@ class Status(object):
         with open(self.path, 'r') as f:
             data = pickle.load(f)
             if 'key' not in data:
-                data['key'] = kwargs.get('key', str(uuid1()))
+                data['key'] = kwargs.get('key', str(uuid4()))
                 with open(self.path, 'w') as f:
                     pickle.dump(data, f)
         for option in Status.OPTIONS:
