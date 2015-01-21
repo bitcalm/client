@@ -1,5 +1,9 @@
 #! /usr/bin/env python2.7
 import os
+
+if os.getuid() != 0:
+    exit('Sorry, you have not enough rights to run BitCalm. Only root can run BitCalm.')
+
 import re
 import sys
 import errno
