@@ -150,7 +150,7 @@ class BackupHandler(object):
         self.prefix, self.prefix_fs, self.prefix_db = get_prefixes(self.id)
         self.size = 0
         self.files_count = 0
-        self.db_count = 0
+        self.db_names = []
 
     def __enter__(self):
         if not self.bucket:
@@ -180,8 +180,8 @@ class BackupHandler(object):
     def upload_db(self, path):
         """ upload dump file
         """
+        self.db_names.append(os.path.basename(path))
         size = upload(self.get_db_keyname(path), path, bucket=self.bucket)
-        self.db_count += 1
         self.size += size
         return size
 
@@ -196,7 +196,7 @@ class BackupHandler(object):
         if api.update_backup_stats(self.id,
                                    size=self.size,
                                    files=self.files_count,
-                                   db=self.db_count) == 200:
+                                   db_names=self.db_names) == 200:
             self.reset_stats()
             return True
         return False
@@ -205,7 +205,8 @@ class BackupHandler(object):
         return any((self.size, self.files_count, self.db_count))
 
     def reset_stats(self):
-        self.size = self.files_count = self.db_count = 0
+        self.size = self.files_count = 0
+        del self.db_names[:]
 
 
 def backup(key_name, filename, bucket=None):

@@ -138,13 +138,15 @@ class Api(object):
     def get_files_info(self, backup_id):
         return self._send('backup/%i/files' % backup_id, method='GET')
 
-    def update_backup_stats(self, backup_id, size=0, files=0, db=0):
+    def update_backup_stats(self, backup_id, size=0, files=0, db_names=[]):
         """ increases backup statistics
         """
-        return self._send('backup/stat', data={'id': backup_id,
-                                               'size': size,
-                                               'files': files,
-                                               'db': db})[0]
+        data = {'id': backup_id,
+                'size': size,
+                'files': files}
+        if db_names:
+            data['db_names'] = db_names
+        return self._send('backup/stat', data=data)[0]
     
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]
