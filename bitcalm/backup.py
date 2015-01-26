@@ -202,7 +202,7 @@ class BackupHandler(object):
         return False
 
     def has_stats(self):
-        return any((self.size, self.files_count, self.db_count))
+        return any((self.size, self.files_count, self.db_names))
 
     def reset_stats(self):
         self.size = self.files_count = 0
