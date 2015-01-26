@@ -145,7 +145,7 @@ class Api(object):
                 'size': size,
                 'files': files}
         if db_names:
-            data['db_names'] = db_names
+            data['db_names'] = json.dumps(db_names)
         return self._send('backup/stat', data=data)[0]
     
     def set_databases(self, databases):

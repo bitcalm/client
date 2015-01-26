@@ -180,8 +180,8 @@ class BackupHandler(object):
     def upload_db(self, path):
         """ upload dump file
         """
-        self.db_names.append(os.path.basename(path))
         size = upload(self.get_db_keyname(path), path, bucket=self.bucket)
+        self.db_names.append(os.path.basename(path))
         self.size += size
         return size
 
