@@ -172,10 +172,17 @@ class BackupHandler(object):
         """ compress if necessary and upload file
         """
         key_name = self.get_fs_keyname(filename)
-        size, compress = backup(key_name, filename, bucket=self.bucket)
-        self.files_count += 1
-        self.size += size
-        return size, compress
+        try:
+            size, compress = backup(key_name, filename, bucket=self.bucket)
+        except IOError, e:
+            if not e.filename:
+                e.filename = filename
+            api.report_exception(e)
+            return None, None
+        else:
+            self.files_count += 1
+            self.size += size
+            return size, compress
 
     def upload_db(self, path):
         """ upload dump file

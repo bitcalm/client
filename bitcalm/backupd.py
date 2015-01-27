@@ -336,7 +336,9 @@ def make_backup():
                     info = os.stat(filename)
                 except OSError:
                     continue
-                result = handler.upload_file(filename)
+                size, is_compressed = handler.upload_file(filename)
+                if size is None:
+                    continue
                 row = (filename,
                        1,
                        info.st_mtime,
@@ -344,7 +346,7 @@ def make_backup():
                        info.st_mode,
                        info.st_uid,
                        info.st_gid,
-                       int(result[1]),
+                       int(is_compressed),
                        backup_id)
                 client_status.backupdb.add((row,))
                 client_status.save()
