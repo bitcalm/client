@@ -80,7 +80,10 @@ def iterfiles(files=None, dirs=None):
         if not dirs:
             break
         path = dirs.pop()
-        ls = os.listdir(path)
+        try:
+            ls = os.listdir(path)
+        except OSError:
+            continue
         for item in ls:
             item = os.path.join(path, item)
             if os.path.islink(item):
