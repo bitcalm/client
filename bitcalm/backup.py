@@ -4,6 +4,7 @@ import gzip
 from hashlib import sha384 as sha
 
 from boto.s3.connection import S3Connection
+from boto.exception import S3ResponseError
 from boto.s3.key import Key
 from filechunkio import FileChunkIO
 
@@ -11,7 +12,7 @@ from bitcalm import log
 from bitcalm.api import api
 from bitcalm.config import status
 from bitcalm.config.base import BackupData
-from bitcalm.utils import is_file_compressed
+from bitcalm.utils import is_file_compressed, try_exec
 from bitcalm.database import get_credentials, import_db
 
 
@@ -115,12 +116,17 @@ def upload(key_name, filepath, bucket=None, **kwargs):
             psize = min(CHUNK_SIZE, size - offset)
             with FileChunkIO(filepath, mode='r',
                              offset=offset, bytes=psize) as f:
-                mp.upload_part_from_file(f, part_num=i+1)
+                try_exec(mp.upload_part_from_file,
+                         args=(f,), kwargs={'part_num': i+1},
+                         exc=S3ResponseError)
         mp.complete_upload()
     else:
         k = Key(bucket)
         k.key = key_name
         size = k.set_contents_from_filename(filepath, encrypt_key=True)
+        size = try_exec(k.set_contents_from_filename,
+                        args=(filepath,), kwargs={'encrypt_key': True},
+                        exc=S3ResponseError)
     return size
 
 

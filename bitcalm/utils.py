@@ -1,4 +1,6 @@
 import re
+import time
+
 from bitcalm.const import DAY, MICROSEC
 
 
@@ -19,3 +21,15 @@ def total_seconds(td):
 
 def is_file_compressed(path):
     return bool(COMPRESSED_RE.match(path))
+
+
+def try_exec(func, args=(), kwargs={}, exc=Exception, tries=3, pause=60):
+    while tries:
+        tries -= 1
+        try:
+            return func(*args, **kwargs)
+        except exc, e:
+            if tries:
+                time.sleep(pause)
+            else:
+                raise e
