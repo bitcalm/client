@@ -123,7 +123,6 @@ def upload(key_name, filepath, bucket=None, **kwargs):
     else:
         k = Key(bucket)
         k.key = key_name
-        size = k.set_contents_from_filename(filepath, encrypt_key=True)
         size = try_exec(k.set_contents_from_filename,
                         args=(filepath,), kwargs={'encrypt_key': True},
                         exc=S3ResponseError)
