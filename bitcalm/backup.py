@@ -2,6 +2,7 @@ import os
 import math
 import gzip
 from hashlib import sha384 as sha
+from cStringIO import StringIO
 
 from boto.s3.connection import S3Connection
 from boto.exception import S3ResponseError
@@ -68,24 +69,40 @@ def make_db_key(prefix, path):
     return prefix + os.path.basename(path)
 
 
-def chunks(fileobj, chunk_size=4*MB):
-    chunk = fileobj.read(chunk_size)
-    while chunk:
+def chunks(path, chunk_size=CHUNK_SIZE):
+    size = os.stat(path).st_size
+    total_chunks = int(math.ceil(size / float(chunk_size)))
+    for i in xrange(total_chunks):
+        offset = chunk_size * i
+        psize = min(chunk_size, size - offset)
+        chunk = FileChunkIO(path, mode='r', offset=offset, bytes=psize)
         yield chunk
-        chunk = fileobj.read(chunk_size)
+        chunk.close()
 
 
-def compress(filename, gzipped=None):
-    if not gzipped:
-        gzipped = '/tmp/bitcalm_compress.gz'
-    if not os.path.exists(filename):
-        return ''
-    gz = gzip.open(gzipped, 'wb')
-    with open(filename, 'rb') as f:
-        for chunk in chunks(f):
-            gz.write(chunk)
+def compress_chunks(chunks, chunk_size=CHUNK_SIZE):
+    chunk = StringIO()
+    gz = gzip.GzipFile(fileobj=chunk, mode='wb')
+    for c in chunks:
+        gz.write(c.read())
+        if gz.tell() > chunk_size:
+            chunk.seek(0)
+            yield chunk
+            chunk.seek(0)
+            chunk.truncate()
     gz.close()
-    return gzipped
+    chunk.seek(0)
+    yield chunk
+
+
+def compress(fileobj):
+    c = StringIO()
+    gz = gzip.GzipFile(fileobj=c, mode='wb')
+    fileobj.seek(0)
+    gz.write(fileobj.read())
+    gz.close()
+    c.seek(0)
+    return c
 
 
 def decompress(zipped, unzipped=None, delete=True):
@@ -104,28 +121,30 @@ def decompress(zipped, unzipped=None, delete=True):
     return unzipped
 
 
-def upload(key_name, filepath, bucket=None, **kwargs):
+def upload_multipart(key_name, parts, bucket=None):
+    mp = bucket.initiate_multipart_upload(key_name, encrypt_key=True)
+    size = 0
+    for i, part in enumerate(parts):
+        try:
+            size += try_exec(mp.upload_part_from_file,
+                             args=(part,), kwargs={'part_num': i+1},
+                             exc=S3ResponseError).size
+        except Exception, e:
+            mp.cancel_upload()
+            log.error('Upload of part %i failed: %s' % (i, str(e)))
+            return 0
+    mp.complete_upload()
+    return size
+
+
+def upload(key_name, fileobj, bucket=None):
     if not bucket:
         bucket = get_bucket()
-    size = os.stat(filepath).st_size
-    if size > CHUNK_SIZE:
-        chunks = int(math.ceil(size / float(CHUNK_SIZE)))
-        mp = bucket.initiate_multipart_upload(key_name, encrypt_key=True)
-        for i in xrange(chunks):
-            offset = CHUNK_SIZE * i
-            psize = min(CHUNK_SIZE, size - offset)
-            with FileChunkIO(filepath, mode='r',
-                             offset=offset, bytes=psize) as f:
-                try_exec(mp.upload_part_from_file,
-                         args=(f,), kwargs={'part_num': i+1},
-                         exc=S3ResponseError)
-        mp.complete_upload()
-    else:
-        k = Key(bucket)
-        k.key = key_name
-        size = try_exec(k.set_contents_from_filename,
-                        args=(filepath,), kwargs={'encrypt_key': True},
-                        exc=S3ResponseError)
+    k = Key(bucket)
+    k.key = key_name
+    size = try_exec(k.set_contents_from_file,
+                    args=(fileobj,), kwargs={'encrypt_key': True},
+                    exc=S3ResponseError)
     return size
 
 
@@ -177,30 +196,37 @@ class BackupHandler(object):
         """ compress if necessary and upload file
         """
         key_name = self.get_fs_keyname(filename)
-        try:
-            size, compress = backup(key_name, filename, bucket=self.bucket)
-        except IOError, e:
-            if not e.filename:
-                e.filename = filename
-            api.report_exception(e)
-            return None, None
+        need_to_compress = not is_file_compressed(filename)
+        multipart = os.stat(filename).st_size > CHUNK_SIZE
+        if multipart:
+            data = chunks(filename)
+            if need_to_compress:
+                data = compress_chunks(data)
+            size = upload_multipart(key_name, data, bucket=self.bucket)
         else:
-            self.files_count += 1
-            self.size += size
-            return size, compress
+            with open(filename, 'r') as f:
+                if need_to_compress:
+                    f = compress(f)
+                size = upload(key_name, f)
+
+        self.files_count += 1
+        self.size += size
+        return size, need_to_compress
 
     def upload_db(self, path):
         """ upload dump file
         """
-        size = upload(self.get_db_keyname(path), path, bucket=self.bucket)
+        with open(path, 'r') as f:
+            size = upload(self.get_db_keyname(path), f, bucket=self.bucket)
         self.db_names.append(os.path.basename(path))
         self.size += size
         return size
 
     def upload_fs_info(self):
-        return backup(self.prefix + os.path.basename(status.backupdb.db),
-                      status.backupdb.db,
-                      bucket=self.bucket)
+        with open(status.backupdb.db, 'r') as f:
+            return upload(self.prefix + os.path.basename(status.backupdb.db),
+                          compress(f),
+                          bucket=self.bucket)
 
     def upload_stats(self):
         if not self.has_stats():
@@ -219,20 +245,6 @@ class BackupHandler(object):
     def reset_stats(self):
         self.size = self.files_count = 0
         del self.db_names[:]
-
-
-def backup(key_name, filename, bucket=None):
-    need_to_compress = not is_file_compressed(filename)
-    if need_to_compress:
-        filename = compress(filename)
-        if not filename:
-            return 0, False
-    try:
-        size = upload(key_name, filename, bucket=bucket)
-    finally:
-        if need_to_compress:
-            os.remove(filename)
-    return size, need_to_compress
 
 
 def get_database(backup_id, path=None):
