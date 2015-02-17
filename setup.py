@@ -18,6 +18,7 @@ setup(name = 'bitcalm',
       version = __version__,
       packages = find_packages(),
       install_requires = install_requires,
+      zip_safe = True,
       entry_points = {'console_scripts': ['bitcalm = bitcalm.backupd:main',]},
       data_files = [('/etc/init.d', ['default/bitcalmd',]),
                     ('/usr/local/bin', ['default/uninstall_bitcalm',])]
