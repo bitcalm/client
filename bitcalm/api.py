@@ -9,6 +9,7 @@ from urllib import urlencode
 
 from config import config, status as client_status
 from bitcalm import __version__
+from bitcalm.const import MIN
 
 
 def returns_json(func):
@@ -25,7 +26,7 @@ class Api(object):
 
     def __init__(self, host, port, uuid, key):
         conn_cls = HTTPSConnection if config.https else HTTPConnection
-        self.conn = conn_cls(host, port)
+        self.conn = conn_cls(host, port, timeout=5*MIN)
         self.base_params = {'uuid': uuid, 'key': key}
     
     def _send(self, path, data={}, files={}, method='POST'):
