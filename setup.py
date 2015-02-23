@@ -32,7 +32,3 @@ for path, item in (('/etc', 'default/bitcalm.conf'),
     dst = os.path.join(path, os.path.basename(item))
     if not os.path.exists(dst):
         shutil.copyfile(item, dst)
-
-for item in ('/usr/local/bin/uninstall_bitcalm',
-             '/etc/init.d/bitcalmd'):
-    os.chmod(item, 0o755)
