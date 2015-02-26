@@ -18,6 +18,7 @@ setup(name = 'bitcalm',
       version = __version__,
       packages = find_packages(),
       install_requires = install_requires,
+      zip_safe = False,
       entry_points = {'console_scripts': ['bitcalm = bitcalm.backupd:main',]},
       data_files = [('/etc/init.d', ['default/bitcalmd',]),
                     ('/usr/local/bin', ['default/uninstall_bitcalm',])]
@@ -31,7 +32,3 @@ for path, item in (('/etc', 'default/bitcalm.conf'),
     dst = os.path.join(path, os.path.basename(item))
     if not os.path.exists(dst):
         shutil.copyfile(item, dst)
-
-for item in ('/usr/local/bin/uninstall_bitcalm',
-             '/etc/init.d/bitcalmd'):
-    os.chmod(item, 0o755)
