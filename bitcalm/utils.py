@@ -1,5 +1,6 @@
 import re
 import time
+import platform
 
 from bitcalm.const import DAY, MICROSEC
 
@@ -33,3 +34,10 @@ def try_exec(func, args=(), kwargs={}, exc=Exception, tries=3, pause=60):
                 time.sleep(pause)
             else:
                 raise e
+
+
+def get_system_info():
+    return {'distribution': ' '.join(platform.linux_distribution()),
+            'kernel': '%s %s' % (platform.system(), platform.release()),
+            'proc_type': platform.machine(),
+            'python': platform.python_version()}
