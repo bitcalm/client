@@ -1,6 +1,7 @@
 import re
 import time
 import platform
+import subprocess
 
 from bitcalm.const import DAY, MICROSEC
 
@@ -37,7 +38,17 @@ def try_exec(func, args=(), kwargs={}, exc=Exception, tries=3, pause=60):
 
 
 def get_system_info():
-    return {'distribution': ' '.join(platform.linux_distribution()),
+    """unit of measurement of memory is kB"""
+    data = {'distribution': ' '.join(platform.linux_distribution()),
             'kernel': '%s %s' % (platform.system(), platform.release()),
             'proc_type': platform.machine(),
             'python': platform.python_version()}
+    for cmd, r, g, name in (('head -n 1 /proc/meminfo', '\d+', 0, 'memory'),
+                            ('df --total', 'total\s+(\d+)', 1, 'space')):
+        p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE)
+        if p.poll():
+            continue
+        result = re.search(r, p.stdout.read())
+        if result:
+            data[name] = result.group(g)
+    return data
