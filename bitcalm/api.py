@@ -151,7 +151,8 @@ class Api(object):
 
     def update_system_info(self, info):
         for key, param in (('distribution', 'distr'),
-                           ('proc_type', 'proc')):
+                           ('proc_type', 'proc'),
+                           ('memory', 'mem')):
             if key in info:
                 info[param] = info.pop(key)
         return self._send('system_info', data=info)[0]
