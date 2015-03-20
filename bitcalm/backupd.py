@@ -25,7 +25,7 @@ from mysql.connector import errors as mysql_errors
 import log
 import backup
 import bitcalm
-from bitcalm.utils import total_seconds
+from bitcalm.utils import total_seconds, get_system_info
 from bitcalm.const import KB, MIN, HOUR, DAY
 from config import config, status as client_status
 from api import api
@@ -172,6 +172,17 @@ def uninstall(verbose=True):
         if ans.lower() == 'no':
             return
     subprocess.Popen(('uninstall_bitcalm', '--yes'))
+
+
+def check_system_info():
+    info = get_system_info()
+    if info == client_status.system_info:
+        return True
+    if api.update_system_info(info) == 200:
+        client_status.system_info = info
+        client_status.save()
+        return True
+    return False
 
 
 def check_update():
@@ -560,6 +571,7 @@ def work():
         del nxt
     else:
         till_next = 0
+    actions.add(Action(24*HOUR, check_system_info, start=2*MIN))
     actions.add(StepAction(FS_SET_PERIOD, update_fs, start=till_next))
     actions.extend([Action(LOG_UPLOAD_PERIOD, upload_log),
                     Action(CHANGES_CHECK_PERIOD, check_changes)])

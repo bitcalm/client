@@ -101,7 +101,8 @@ class Status(object):
                'amazon',
                'last_ver_check',
                'upload_dirs',
-               'last_fs_upload')
+               'last_fs_upload',
+               'system_info')
     DEFAULT = {'schedules': [],
                'database': [],
                'upload_dirs': []}

@@ -148,6 +148,14 @@ class Api(object):
         if db_names:
             data['db_names'] = json.dumps(db_names)
         return self._send('backup/stat', data=data)[0]
+
+    def update_system_info(self, info):
+        for key, param in (('distribution', 'distr'),
+                           ('proc_type', 'proc'),
+                           ('memory', 'mem')):
+            if key in info:
+                info[param] = info.pop(key)
+        return self._send('system_info', data=info)[0]
     
     def set_databases(self, databases):
         return self._send('databases', data={'db': json.dumps(databases)})[0]
