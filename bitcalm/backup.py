@@ -207,7 +207,7 @@ class BackupHandler(object):
             with open(filename, 'r') as f:
                 if need_to_compress:
                     f = compress(f)
-                size = upload(key_name, f)
+                size = upload(key_name, f, bucket=self.bucket)
 
         self.files_count += 1
         self.size += size
