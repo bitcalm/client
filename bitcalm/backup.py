@@ -85,7 +85,8 @@ def compress_chunks(chunks, chunk_size=CHUNK_SIZE):
     gz = gzip.GzipFile(fileobj=chunk, mode='wb')
     for c in chunks:
         gz.write(c.read())
-        if gz.tell() > chunk_size:
+        gz.flush()
+        if chunk.tell() > chunk_size:
             chunk.seek(0)
             yield chunk
             chunk.seek(0)
