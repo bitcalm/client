@@ -590,7 +590,10 @@ def work():
     if os.path.exists(CRASH_PATH) and os.stat(CRASH_PATH).st_size > 0:
         actions.add(OneTimeAction(10*MIN, report_crash, start=0))
 
-    log.info('Action pool is:\n%s' % '\n'.join(map(str, actions)))
+    try:
+        log.info('Action pool is:\n%s' % '\n'.join(map(str, actions)))
+    except TypeError:
+        log.error('Failed to iterate actions (%s)' % type(actions))
     log.info('Start main loop')
     while True:
         action = actions.next()
