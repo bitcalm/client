@@ -593,7 +593,24 @@ def work():
     try:
         log.info('Action pool is:\n%s' % '\n'.join(map(str, actions)))
     except TypeError:
-        log.error('Failed to iterate actions (%s)' % type(actions))
+        msg = ['Failed to iterate actions.']
+        if isinstance(actions, ActionPool):
+            msg.append('ActionPool object has %s__iter__ method.')
+            msg[-1] %= '' if hasattr(actions, '__iter__') else 'no '
+            if hasattr(actions, '_actions'):
+                if isinstance(actions._actions, list):
+                    if actions._actions:
+                        f = ', '.join((a.__name__ for a in actions._funcs()))
+                        msg.append('There are functions: %s.' % f)
+                    else:
+                        msg.append('_actions is empty list.')
+                else:
+                    msg.append('_actions is %s.' % type(actions._actions))
+            else:
+                msg.append('There is no _actions in actions.')
+        else:
+            msg.append('Type of actions is %s' % type(actions))
+        log.error(' '.join(msg))
     log.info('Start main loop')
     while True:
         action = actions.next()
