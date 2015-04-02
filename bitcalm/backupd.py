@@ -591,7 +591,7 @@ def work():
         actions.add(OneTimeAction(10*MIN, report_crash, start=0))
 
     try:
-        log.info('Action pool is:\n%s' % '\n'.join(map(str, actions)))
+        log.info('Action pool is:\n%s' % '\n'.join([str(a) for a in actions]))
     except TypeError:
         msg = ['Failed to iterate actions.']
         if isinstance(actions, ActionPool):
