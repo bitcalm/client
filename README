@@ -1,4 +1,10 @@
-To create properly named archive use this command:
+# BitCalm Client
+Automatically backup your Linux server files &amp; databases  to Amazon S3 cloud and restore it by 1 click. No sysadmin required.
 
-filename=bitcalm-`python -c 'from bitcalm import __version__;print __version__'`.tar && git archive --format=tar -o ./$filename HEAD && 
-gzip $filename
+
+# How it works
+1. Installation in 30 seconds. Install BitCalm opensource client on your server
+2. Configuration in 30 seconds. Configure files and DB auto backup settings
+3. One click data restore. Easily restore your server data from any backup version
+
+Help: https://bitcalm.com/help/
